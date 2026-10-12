@@ -254,19 +254,13 @@ export function hitungPenilaianOtomatis(
 ): PenilaianRubrik {
   const tagCounts = customTagCounts || parseDocumentTagCounts(doc.teks);
 
-  // Estimasi Kematangan Makro Alami (Berdasarkan volume kata & struktur paragraf)
-  const plainText = doc.teks ? doc.teks.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-  const wordCount = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
-  
-  // Baseline kematangan makro: jika tulisan proporsional (>150 kata), default 4.8
-  let macroBase = 4.8;
-  if (wordCount < 50) macroBase = 3.5;
-  else if (wordCount < 100) macroBase = 4.0;
-
-  // Aspek Makro (3 Variabel): dikurangi jika guru memberi tag makro spesifik
-  const kedalamanGagasan = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.gagasan || 0, macroBase)));
-  const kepaduanParagraf = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kohesi || 0, macroBase)));
-  const strukturTeks = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.struktur || 0, macroBase)));
+  // Sifat Penilaian adalah KOREKSI (Deductive Grading):
+  // Seluruh 9 aspek bermula dari nilai PENUH (5.0 / 5.0).
+  // Nilai HANYA berkurang saat guru memberikan tag catatan koreksi pada aspek tersebut.
+  // Jika belum/tidak ada feedback sama sekali, nilai siswa adalah 100 (Sempurna / Full).
+  const kedalamanGagasan = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.gagasan || 0, 5)));
+  const kepaduanParagraf = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kohesi || 0, 5)));
+  const strukturTeks = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.struktur || 0, 5)));
 
   // Aspek Mikro (6 Variabel): dihitung dari frekuensi tag mikro
   const efektivitasKalimat = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kalimat || 0, 5)));
@@ -287,7 +281,7 @@ export function hitungPenilaianOtomatis(
   // Skor Total: Bobot 50% Makro + 50% Mikro
   const skorTotal = Math.min(100, Math.max(20, Math.round(skorMakro * 0.5 + skorMikro * 0.5)));
 
-  let predikat: 'Perlu Bimbingan' | 'Cukup' | 'Baik' | 'Sangat Baik' = 'Baik';
+  let predikat: 'Perlu Bimbingan' | 'Cukup' | 'Baik' | 'Sangat Baik' = 'Sangat Baik';
   if (skorTotal >= 88) predikat = 'Sangat Baik';
   else if (skorTotal >= 75) predikat = 'Baik';
   else if (skorTotal >= 60) predikat = 'Cukup';

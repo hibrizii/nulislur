@@ -71,6 +71,18 @@ const CATATAN_TEMPLATES = [
   { id: '6', label: 'Perlu Revisi Akhir', tag: '[revisi]', template: 'Coba baca ulang sekali lagi secara perlahan sebelum siap dipublikasikan.' },
 ];
 
+const RUBRIC_ASPECTS = [
+  { id: 'kedalamanGagasan', name: 'Kedalaman Gagasan', category: 'Makro' },
+  { id: 'kepaduanParagraf', name: 'Kepaduan Paragraf', category: 'Makro' },
+  { id: 'strukturTeks', name: 'Struktur Teks', category: 'Makro' },
+  { id: 'efektivitasKalimat', name: 'Efektivitas Kalimat', category: 'Mikro' },
+  { id: 'ketepatanDiksi', name: 'Ketepatan Diksi', category: 'Mikro' },
+  { id: 'kebakuanEjaan', name: 'Kebakuan & Ejaan', category: 'Kebahasaan' },
+  { id: 'pembentukanKata', name: 'Pembentukan Kata', category: 'Kebahasaan' },
+  { id: 'tandaBaca', name: 'Tanda Baca', category: 'Kebahasaan' },
+  { id: 'hurufKapital', name: 'Huruf Kapital', category: 'Mikro' },
+];
+
 export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   students,
   dokumenMap,
@@ -870,7 +882,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                       await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
                       const tags = parseDocumentTagCounts(html);
-                      const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
+                      const autoPenilaian = hitungPenilaianOtomatis({ ...selectedDoc, teks: html }, tags, catatanUmum);
                       await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
                       if (dokumenMap[selectedDocId]) {
                         dokumenMap[selectedDocId].teks = html;
@@ -1080,6 +1092,53 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                         <p className="text-[11px] text-stone-400 italic">Belum ada tag koreksi inline disisipkan.</p>
                       )}
                     </div>
+
+                    {/* Skor Rubrik & Penilaian Otomatis (Live) */}
+                    {(() => {
+                      const currentPenilaian = selectedDoc.penilaian || hitungPenilaianOtomatis(selectedDoc, detectedTagCounts || undefined, catatanUmum);
+                      return (
+                        <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-900/60 border border-stone-200/60 dark:border-stone-800 space-y-2">
+                          <div className="flex items-center justify-between border-b border-stone-200/50 dark:border-stone-800 pb-1.5">
+                            <span className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                              Skor Rubrik Otomatis:
+                            </span>
+                            <span className="text-xs font-bold font-mono px-2 py-0.5 rounded-md bg-stone-200 dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+                              {currentPenilaian.skorTotal}/100 • {currentPenilaian.predikat}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                            <div className="p-1.5 rounded-lg bg-white dark:bg-stone-800/60 border border-stone-200/50 dark:border-stone-700/50">
+                              <span className="text-[10px] text-stone-400 block">Makro (50%)</span>
+                              <span className="font-bold font-mono text-stone-800 dark:text-stone-200">{currentPenilaian.skorMakro}</span>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-white dark:bg-stone-800/60 border border-stone-200/50 dark:border-stone-700/50">
+                              <span className="text-[10px] text-stone-400 block">Mikro (50%)</span>
+                              <span className="font-bold font-mono text-stone-800 dark:text-stone-200">{currentPenilaian.skorMikro}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 pt-1">
+                            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">
+                              9 Aspek Koreksi (Skala 1 - 5):
+                            </span>
+                            <div className="grid grid-cols-1 gap-1">
+                              {RUBRIC_ASPECTS.map((asp) => {
+                                const score = (currentPenilaian as any)[asp.id] ?? 5.0;
+                                return (
+                                  <div key={asp.id} className="flex items-center justify-between text-[11px] py-0.5 px-1.5 rounded bg-white/70 dark:bg-stone-800/40 border border-stone-100 dark:border-stone-800">
+                                    <span className="text-stone-600 dark:text-stone-400 truncate mr-2">{asp.name}</span>
+                                    <span className={`font-mono font-bold ${score < 5.0 ? 'text-amber-600 dark:text-amber-400' : 'text-stone-700 dark:text-stone-300'}`}>
+                                      {score.toFixed(1)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1247,17 +1306,11 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                   await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
                   const tags = parseDocumentTagCounts(html);
-                  const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
+                  const autoPenilaian = hitungPenilaianOtomatis({ ...selectedDoc, teks: html }, tags, catatanUmum);
                   await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
                   if (dokumenMap[selectedDocId]) {
                     dokumenMap[selectedDocId].teks = html;
                     dokumenMap[selectedDocId].penilaian = autoPenilaian;
-                  }
-                  if (selectedDoc.status === 'Terkumpul') {
-                    await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
-                    if (dokumenMap[selectedDocId]) {
-                      dokumenMap[selectedDocId].status = 'Draf';
-                    }
                   }
                   if (onDokumenUpdated) onDokumenUpdated();
                 }}

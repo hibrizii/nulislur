@@ -74,7 +74,7 @@ export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokume
       sumMicro += p.skorMikro;
 
       RUBRIC_VARIABLES.forEach((v) => {
-        varSums[v.id] += (p as any)[v.id] || 4.0;
+        varSums[v.id] += (p as any)[v.id] ?? 5.0;
       });
     });
 
@@ -538,7 +538,7 @@ export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokume
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {RUBRIC_VARIABLES.map((v) => {
-                  const val = (selectedDocModal.penilaian as any)[v.id] || 4.0;
+                  const val = (selectedDocModal.penilaian as any)[v.id] ?? 5.0;
                   return (
                     <div
                       key={v.id}

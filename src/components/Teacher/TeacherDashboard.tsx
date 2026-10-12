@@ -402,7 +402,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
 
     // Hitung dan simpan penilaian akhir agar tercatat secara permanen di rekap kelas & profil siswa
     const tags = parseDocumentTagCounts(doc.teks);
-    const penilaian = doc.penilaian || hitungPenilaianOtomatis(doc, tags, doc.feedbackUmum);
+    const hasAnyTags = Object.values(tags).some((v) => v > 0);
+    let penilaian = doc.penilaian;
+    if (!penilaian || (!hasAnyTags && penilaian.skorTotal !== 100)) {
+      penilaian = hitungPenilaianOtomatis(doc, tags, doc.feedbackUmum);
+    }
     await DataService.simpanPenilaian(selectedDocId, penilaian, true);
 
     if (izinPublikasi) {

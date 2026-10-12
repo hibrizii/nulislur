@@ -439,6 +439,103 @@ function findHighlightSpan(doc: any, pos: number): HighlightSpan | null {
   return null;
 }
 
+function findAllHighlightsInRange(doc: any, from: number, to: number): HighlightSpan[] {
+  const spans: HighlightSpan[] = [];
+  if (!doc || from >= to) return spans;
+
+  const minPos = Math.max(0, from);
+  const maxPos = Math.min(doc.content.size, to);
+
+  try {
+    doc.nodesBetween(minPos, maxPos, (node: any, pos: number) => {
+      if (node.isText && node.marks) {
+        const hl = node.marks.find((m: any) => m.type.name === 'highlight');
+        if (hl) {
+          const span = findHighlightSpan(doc, pos);
+          if (span) {
+            if (!spans.some((s) => s.from === span.from && s.to === span.to)) {
+              spans.push(span);
+            }
+          } else {
+            const fallbackSpan: HighlightSpan = {
+              from: pos,
+              to: pos + node.nodeSize,
+              mark: hl,
+              text: node.text || '',
+            };
+            if (!spans.some((s) => s.from === fallbackSpan.from && s.to === fallbackSpan.to)) {
+              spans.push(fallbackSpan);
+            }
+          }
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Error finding highlights in range:', e);
+  }
+
+  return spans;
+}
+
+function protectHighlightsOnRangeDelete(
+  state: any,
+  selFrom: number,
+  selTo: number,
+  replacementText = ''
+): any {
+  const highlights = findAllHighlightsInRange(state.doc, selFrom, selTo);
+  if (highlights.length === 0) return null;
+
+  let tr = state.tr;
+
+  // Urutkan dari kanan ke kiri (posisi terbesar ke terkecil)
+  // agar pergeseran indeks di hilir (kanan) tidak mempengaruhi indeks di hulu (kiri)
+  const sorted = [...highlights].sort((a, b) => b.from - a.from);
+
+  // 1. Hapus bagian tak-ber-highlight setelah highlight terakhir (kanan)
+  const lastHl = sorted[0];
+  const trailingStart = Math.max(selFrom, lastHl.to);
+  if (selTo > trailingStart) {
+    tr = tr.delete(trailingStart, selTo);
+  }
+
+  // 2. Olah tiap highlight dari kanan ke kiri
+  for (let i = 0; i < sorted.length; i++) {
+    const hl = sorted[i];
+    const prevHl = sorted[i + 1]; // highlight sebelumnya (lebih kiri)
+
+    const hlOverlapStart = Math.max(selFrom, hl.from);
+    const hlOverlapEnd = Math.min(selTo, hl.to);
+
+    if (hlOverlapEnd > hlOverlapStart) {
+      if (hlOverlapStart === hl.from && hlOverlapEnd === hl.to) {
+        // Highlight terblok seluruhnya: pertahankan slot '\u00a0' atau replacementText
+        const insertContent = replacementText && i === sorted.length - 1 ? replacementText : '\u00a0';
+        tr = tr.replaceWith(hl.from, hl.to, state.schema.text(insertContent, [hl.mark]));
+      } else {
+        // Sebagian highlight terblok: hapus irisan seleksi
+        tr = tr.delete(hlOverlapStart, hlOverlapEnd);
+      }
+    }
+
+    // Hapus celah tak-ber-highlight antara highlight ini dan highlight sebelumnya
+    const gapStart = prevHl ? Math.max(selFrom, prevHl.to) : selFrom;
+    const gapEnd = hl.from;
+    if (gapEnd > gapStart) {
+      tr = tr.delete(gapStart, gapEnd);
+    }
+  }
+
+  const firstHl = sorted[sorted.length - 1];
+  const caretPos = Math.min(
+    tr.doc.content.size,
+    Math.max(selFrom, firstHl.from + (replacementText ? replacementText.length : 1))
+  );
+  tr = tr.setSelection(TextSelection.create(tr.doc, caretPos));
+  tr.setStoredMarks([]);
+  return tr;
+}
+
 const CustomHighlight = Highlight.extend({
   inclusive: false,
   addAttributes() {
@@ -476,10 +573,23 @@ const CustomHighlight = Highlight.extend({
         props: {
           handleTextInput(view, from, to, text) {
             const { state } = view;
+
+            // 1. Jika ada rentang seleksi yang mencakup highlight (from !== to)
+            if (from !== to) {
+              const highlights = findAllHighlightsInRange(state.doc, from, to);
+              if (highlights.length > 0) {
+                const tr = protectHighlightsOnRangeDelete(state, from, to, text);
+                if (tr) {
+                  view.dispatch(tr);
+                  return true;
+                }
+              }
+            }
+
             const hl = findHighlightSpan(state.doc, from);
 
             if (hl) {
-              // 1. Boundary Anti-Bleed: Jika kursor berada di batas akhir highlight (from === hl.to)
+              // 2. Boundary Anti-Bleed: Jika kursor berada di batas akhir highlight (from === hl.to)
               // Ketikan baru TIDAK BOLEH terbawa highlight (tidak terseret)
               if (from === hl.to) {
                 const cleanMarks = (state.storedMarks || state.selection.$from.marks()).filter(
@@ -491,7 +601,7 @@ const CustomHighlight = Highlight.extend({
                 return true;
               }
 
-              // 2. Placeholder Slot Replacement: Jika mark berisi placeholder '\u00a0' atau spasi kosong
+              // 3. Placeholder Slot Replacement: Jika mark berisi placeholder '\u00a0' atau spasi kosong
               if (hl.text === '\u00a0' || hl.text === ' ') {
                 const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text(text, [hl.mark]));
                 tr.setSelection(TextSelection.create(tr.doc, hl.from + text.length));
@@ -500,7 +610,7 @@ const CustomHighlight = Highlight.extend({
                 return true;
               }
 
-              // 3. Typing Inside Highlight (Anti-Split): Ketikan di dalam kata highlight mewarisi mark yang sama persis
+              // 4. Typing Inside Highlight (Anti-Split): Ketikan di dalam kata highlight mewarisi mark yang sama persis
               const marks = [
                 hl.mark,
                 ...state.selection.$from.marks().filter((m) => m.type.name !== 'highlight'),
@@ -525,14 +635,32 @@ const CustomHighlight = Highlight.extend({
           },
 
           handleKeyDown(view, event) {
+            const { state } = view;
+            const { selection } = state;
+
+            // 1. Potong (Ctrl+X / Cmd+X) pada Seleksi yang Melintasi Highlight
+            if ((event.ctrlKey || event.metaKey) && (event.key === 'x' || event.key === 'X')) {
+              if (!selection.empty) {
+                const highlights = findAllHighlightsInRange(state.doc, selection.from, selection.to);
+                if (highlights.length > 0) {
+                  const textToCut = state.doc.textBetween(selection.from, selection.to);
+                  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(textToCut).catch(() => {});
+                  }
+                  const tr = protectHighlightsOnRangeDelete(state, selection.from, selection.to);
+                  if (tr) {
+                    view.dispatch(tr);
+                    return true;
+                  }
+                }
+              }
+            }
+
             if (event.key !== 'Backspace' && event.key !== 'Delete') {
               return false;
             }
 
-            const { state } = view;
-            const { selection } = state;
-
-            // 1. Kursor Kolaps (Single Caret)
+            // 2. Kursor Kolaps (Single Caret)
             if (selection.empty) {
               if (event.key === 'Backspace') {
                 if (selection.from <= 1) return false;
@@ -568,13 +696,11 @@ const CustomHighlight = Highlight.extend({
                 }
               }
             } else {
-              // 2. Seleksi Rentang (!selection.empty)
-              // Jika siswa memblok kata ber-highlight dan menekan Backspace/Delete
-              const hl = findHighlightSpan(state.doc, selection.from);
-              if (hl && selection.from >= hl.from && selection.to <= hl.to) {
-                if (selection.from === hl.from && selection.to === hl.to) {
-                  const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text('\u00a0', [hl.mark]));
-                  tr.setSelection(TextSelection.create(tr.doc, hl.from + 1));
+              // 3. Seleksi Rentang (!selection.empty) yang Melintasi Highlight
+              const highlights = findAllHighlightsInRange(state.doc, selection.from, selection.to);
+              if (highlights.length > 0) {
+                const tr = protectHighlightsOnRangeDelete(state, selection.from, selection.to);
+                if (tr) {
                   view.dispatch(tr);
                   return true;
                 }
@@ -587,7 +713,17 @@ const CustomHighlight = Highlight.extend({
           handlePaste(view, _event, slice) {
             const { state } = view;
             const { selection } = state;
-            if (selection.empty) {
+            if (!selection.empty) {
+              const highlights = findAllHighlightsInRange(state.doc, selection.from, selection.to);
+              if (highlights.length > 0) {
+                const text = slice.content.textBetween(0, slice.content.size);
+                const tr = protectHighlightsOnRangeDelete(state, selection.from, selection.to, text);
+                if (tr) {
+                  view.dispatch(tr);
+                  return true;
+                }
+              }
+            } else {
               const hl = findHighlightSpan(state.doc, selection.from);
               if (hl && (hl.text === '\u00a0' || hl.text === ' ')) {
                 const text = slice.content.textBetween(0, slice.content.size);
@@ -3786,6 +3922,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
         .setTextSelection(targetPos)
         .run();
     }
+    onUpdateRef.current?.(editor.getHTML());
     window.getSelection()?.removeAllRanges();
     setShowTeacherCommentModal(false);
     setCommentText('');
@@ -3814,6 +3951,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
         .setTextSelection(targetPos)
         .run();
     }
+    onUpdateRef.current?.(editor.getHTML());
     window.getSelection()?.removeAllRanges();
     setShowTeacherCommentModal(false);
     setCommentText('');
