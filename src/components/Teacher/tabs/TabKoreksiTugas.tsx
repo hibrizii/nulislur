@@ -44,6 +44,7 @@ interface TabKoreksiTugasProps {
   onTandaiSelesai: (izinPublikasi: boolean) => Promise<void>;
   penugasanList?: Penugasan[];
   onOpenNewPenugasanModal?: () => void;
+  onOpenFullEditor?: (docId: string) => void;
 }
 
 // Template Saran Catatan Guru
@@ -67,6 +68,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   onTandaiSelesai,
   penugasanList = [],
   onOpenNewPenugasanModal,
+  onOpenFullEditor,
 }) => {
   // Layout Controls
   const [isQueueCollapsed, setIsQueueCollapsed] = useState<boolean>(false);
@@ -736,6 +738,15 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
 
                     {/* Ekspor Naskah Cepat */}
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {onOpenFullEditor && (
+                        <button
+                          onClick={() => onOpenFullEditor(selectedDocId)}
+                          className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 text-xs px-2.5 py-1.5 cursor-pointer rounded-lg flex items-center gap-1 font-semibold shadow-2xs"
+                          title="Buka Lembar Kerja Editor Layar Penuh (Tanpa Tab)"
+                        >
+                          <Maximize2 size={13} /> <span className="hidden sm:inline">Editor Penuh</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => exportToPdf(selectedDoc.judul, selectedDoc.nama, selectedDoc.teks, selectedDoc.topik)}
                         className="editorial-btn bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-300 text-xs px-2.5 py-1.5 cursor-pointer rounded-lg"

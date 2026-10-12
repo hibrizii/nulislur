@@ -25,6 +25,7 @@ import { ModalNewClass, ModalJoinClass, ModalEditClass } from './modals/ModalKel
 import { ModalPenugasan } from './modals/ModalPenugasan';
 import { LogoutConfirmationModal } from '../Common/LogoutConfirmationModal';
 import { LinimasaCuitan } from '../Cuitan/LinimasaCuitan';
+import { TeacherEditorView } from './TeacherEditorView';
 
 interface TeacherDashboardProps {
   user: UserAccount;
@@ -35,6 +36,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
   const [activeTab, setActiveTab] = useState<TeacherTab>('pantauan');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
+  const [activeEditorDocId, setActiveEditorDocId] = useState<string | 'new' | null>(null);
 
   // Real-time State
   const [liveMap, setLiveMap] = useState<Record<string, LiveStatus>>({});
@@ -460,6 +462,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
     });
   };
 
+  // Jika sedang membuka Editor Guru (Layar penuh murni tanpa sidebar & tanpa tab, identik seperti siswa)
+  if (activeEditorDocId) {
+    return (
+      <TeacherEditorView
+        docId={activeEditorDocId === 'new' ? undefined : activeEditorDocId}
+        user={user}
+        onBack={() => setActiveEditorDocId(null)}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#FAF9F6] dark:bg-[#0c0a09] text-stone-900 dark:text-stone-100 transition-colors duration-200">
       {/* Sidebar Navigasi Modern (Stuck sepanjang layar) */}
@@ -547,6 +560,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
               onTandaiSelesai={handleTandaiSelesai}
               penugasanList={penugasanList}
               onOpenNewPenugasanModal={() => setIsPenugasanModalOpen(true)}
+              onOpenFullEditor={(id) => setActiveEditorDocId(id)}
             />
           )}
 
@@ -618,6 +632,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
             <TabTulisanGuru
               user={user}
               dokumenMap={dokumenMap}
+              onOpenEditor={(id) => setActiveEditorDocId(id || 'new')}
             />
           )}
 
