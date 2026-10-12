@@ -853,6 +853,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       }
                     }}
                     onUpdate={async (html) => {
+                      if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                       await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
                     }}
                   />
@@ -1221,6 +1222,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   }
                 }}
                 onUpdate={async (html) => {
+                  if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                   await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
                   if (selectedDoc.status === 'Terkumpul') {
                     await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);

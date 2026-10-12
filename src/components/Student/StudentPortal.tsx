@@ -124,6 +124,11 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({ user, onLogout }) 
     onLogout();
   };
 
+  const handleBackToLobby = React.useCallback(() => {
+    setActiveView('lobi');
+    setActiveDocId(null);
+  }, []);
+
   return (
     <div
       onContextMenu={(e) => e.preventDefault()}
@@ -174,10 +179,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({ user, onLogout }) 
           docId={activeDocId}
           namaSiswa={currentStudentUser.nama}
           username={currentStudentUser.username}
-          onBackToLobby={() => {
-            setActiveView('lobi');
-            setActiveDocId(null);
-          }}
+          onBackToLobby={handleBackToLobby}
         />
       )}
 
@@ -186,10 +188,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({ user, onLogout }) 
           docId={activeDocId}
           namaSiswa={currentStudentUser.nama}
           username={currentStudentUser.username}
-          onBack={() => {
-            setActiveView('lobi');
-            setActiveDocId(null);
-          }}
+          onBack={handleBackToLobby}
         />
       )}
 

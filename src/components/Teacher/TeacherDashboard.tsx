@@ -467,13 +467,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
     });
   };
 
+  const handleBackFromTeacherEditor = React.useCallback(() => {
+    setActiveEditorDocId(null);
+  }, []);
+
   // Jika sedang membuka Editor Guru (Layar penuh murni tanpa sidebar & tanpa tab, identik seperti siswa)
   if (activeEditorDocId) {
     return (
       <TeacherEditorView
         docId={activeEditorDocId}
         user={user}
-        onBack={() => setActiveEditorDocId(null)}
+        onBack={handleBackFromTeacherEditor}
       />
     );
   }

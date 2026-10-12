@@ -46,6 +46,9 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
   const lastTitleEditTimeRef = useRef<number>(0);
   const topikRef = useRef<string>(topik);
   topikRef.current = topik;
+  const isDirtyRef = useRef<boolean>(false);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
 
   // Show temporary toast notice
   const showToast = (message: string) => {
@@ -59,6 +62,19 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
   useEffect(() => {
     if (!docId) return;
 
+    const handleBeforeUnload = () => {
+      if (isDirtyRef.current && docId && lastLocalTeksRef.current) {
+        try {
+          localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
+            judul: lastLocalJudulRef.current,
+            teks: lastLocalTeksRef.current,
+            timestamp: Date.now()
+          }));
+        } catch {}
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     const unsub = DataService.listenDokumenSingle(docId, (data) => {
       if (!data) return;
 
@@ -66,20 +82,20 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
       // Dilarang keras mengedit karya siswa!
       if (data.penulisKategori !== 'Guru' || (data.username && data.username !== user.username)) {
         alert('Akses Ditolak: Anda tidak memiliki hak untuk mengedit naskah ini.');
-        onBack();
+        onBackRef.current();
         return;
       }
 
       setDoc(data);
 
       const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTitle && data.judul !== lastLocalJudulRef.current) {
+      if (!isRecentlyEditingTitle && !isDirtyRef.current && data.judul !== lastLocalJudulRef.current) {
         setJudul(data.judul || '');
         lastLocalJudulRef.current = data.judul || '';
       }
 
       const isRecentlyEditingTeks = Date.now() - lastEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTeks && data.teks !== lastLocalTeksRef.current) {
+      if (!isRecentlyEditingTeks && !isDirtyRef.current && data.teks !== lastLocalTeksRef.current) {
         setTeks(data.teks || '<p></p>');
         lastLocalTeksRef.current = data.teks || '';
       }
@@ -99,23 +115,19 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     });
 
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       unsub();
       DataService.updateAktivitas(user.username, 'Beranda', null);
       if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      // Flush save on unmount
-      DataService.simpanDokumen(
-        docId,
-        lastLocalJudulRef.current,
-        lastLocalTeksRef.current,
-        topikRef.current
-      ).catch(() => {});
+      // PENTING: Dilarang keras memanggil simpanDokumen di cleanup listener!
     };
-  }, [docId, user.username, onBack]);
+  }, [docId, user.username]);
 
   // Debounced title update (Tanpa fallback dummy 'Tulisan Guru', simpan persis apa adanya yang diketik)
   const handleTitleChange = (newTitle: string) => {
     if (newTitle.length > 120) return;
+    isDirtyRef.current = true;
     lastLocalJudulRef.current = newTitle;
     lastTitleEditTimeRef.current = Date.now();
     setJudul(newTitle);
@@ -126,6 +138,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
       try {
         await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current, topikRef.current);
         setSaveStatus('saved');
+        isDirtyRef.current = false;
       } catch (err) {
         console.warn('Gagal auto-save judul:', err);
       }
@@ -134,23 +147,34 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
 
   // Debounced editor content update (menggunakan ref terkini agar tidak ada stale closure)
   const handleEditorUpdate = (html: string) => {
+    isDirtyRef.current = true;
     lastLocalTeksRef.current = html;
     lastEditTimeRef.current = Date.now();
     setTeks(html);
     setSaveStatus('saving');
+
+    // Simpan snapshot darurat lokal
+    try {
+      localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
+        judul: lastLocalJudulRef.current,
+        teks: html,
+        timestamp: Date.now()
+      }));
+    } catch {}
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
         await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html, topikRef.current);
         setSaveStatus('saved');
+        isDirtyRef.current = false;
       } catch (err) {
         console.warn('Gagal auto-save teks:', err);
       }
     }, 600);
   };
 
-  // Handler Kembali dengan Flush Auto-Save Seketika
+  // Handler Kembali dengan Flush Auto-Save Seketika (Hanya jika dirty)
   const handleBackWithFlush = async () => {
     if (titleTimerRef.current) {
       clearTimeout(titleTimerRef.current);
@@ -160,15 +184,21 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    try {
-      await DataService.simpanDokumen(
-        docId,
-        lastLocalJudulRef.current,
-        lastLocalTeksRef.current,
-        topikRef.current
-      );
-    } catch (err) {
-      console.warn('Gagal flush draf saat kembali:', err);
+    if (isDirtyRef.current) {
+      const hasContent = lastLocalTeksRef.current && lastLocalTeksRef.current !== '<p></p>' && lastLocalTeksRef.current !== '<p><br></p>';
+      if (hasContent || doc?.teks === '<p></p>' || doc?.teks === '<p><br></p>') {
+        try {
+          await DataService.simpanDokumen(
+            docId,
+            lastLocalJudulRef.current,
+            lastLocalTeksRef.current,
+            topikRef.current
+          );
+          isDirtyRef.current = false;
+        } catch (err) {
+          console.warn('Gagal flush draf saat kembali:', err);
+        }
+      }
     }
     onBack();
   };

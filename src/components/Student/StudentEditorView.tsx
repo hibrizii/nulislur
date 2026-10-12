@@ -55,6 +55,9 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
   const lastLocalJudulRef = useRef<string>('');
   const lastTitleEditTimeRef = useRef<number>(0);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDirtyRef = useRef<boolean>(false);
+  const onBackToLobbyRef = useRef(onBackToLobby);
+  onBackToLobbyRef.current = onBackToLobby;
 
   const handleHoverFeedback = (data: HoverFeedbackData | null) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
@@ -146,43 +149,81 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     }
   };
 
-  // Matikan klik kanan di lembar kerja siswa demi integritas menulis
+  // Matikan klik kanan di lembar kerja siswa demi integritas menulis & cadangkan snapshot darurat
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
     };
+    const handleBeforeUnload = () => {
+      if (isDirtyRef.current && docId && lastLocalTeksRef.current) {
+        try {
+          localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
+            judul: lastLocalJudulRef.current,
+            teks: lastLocalTeksRef.current,
+            timestamp: Date.now()
+          }));
+        } catch {}
+      }
+    };
     window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, []);
+  }, [docId]);
 
-  // Listen document data (dengan pencegah echo loop saat siswa mengetik/menghapus)
+  // Listen document data
   useEffect(() => {
+    if (!docId) return;
+
     const unsub = DataService.listenDokumenSingle(docId, (data) => {
       if (!data) {
-        onBackToLobby();
+        onBackToLobbyRef.current();
         return;
       }
       setDoc(data);
 
-      // Jangan menimpa judul jika siswa baru saja mengetik judul dalam 3 detik terakhir
-      const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTitle && data.judul !== lastLocalJudulRef.current) {
-        setJudul(data.judul || '');
-        lastLocalJudulRef.current = data.judul || '';
+      // Cek pemulihan darurat jika teks di database kosong namun ada backup lokal
+      let resolvedTeks = data.teks || '<p></p>';
+      let resolvedJudul = data.judul || '';
+      const isDbEmpty = !data.teks || data.teks === '<p></p>' || data.teks === '<p><br></p>';
+
+      if (isDbEmpty && typeof window !== 'undefined') {
+        try {
+          const rawBackup = localStorage.getItem(`nulislur_backup_${docId}`);
+          if (rawBackup) {
+            const parsed = JSON.parse(rawBackup);
+            if (parsed.teks && parsed.teks.length > 20 && parsed.teks !== '<p></p>') {
+              console.info(`[NulisLur Disaster-Recovery] Memulihkan naskah dari snapshot lokal untuk dokumen ${docId}`);
+              resolvedTeks = parsed.teks;
+              if (parsed.judul && !data.judul) {
+                resolvedJudul = parsed.judul;
+              }
+              // Segera kembalikan naskah ke database agar tersimpan aman
+              DataService.simpanDokumen(docId, resolvedJudul, resolvedTeks);
+            }
+          }
+        } catch {}
       }
 
-      // Jangan menimpa teks jika siswa baru saja mengetik/menghapus dalam 3 detik terakhir
+      // Jangan menimpa judul jika siswa sedang mengetik atau sedang dirty
+      const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
+      if (!isRecentlyEditingTitle && !isDirtyRef.current && resolvedJudul !== lastLocalJudulRef.current) {
+        setJudul(resolvedJudul);
+        lastLocalJudulRef.current = resolvedJudul;
+      }
+
+      // Jangan menimpa teks jika siswa sedang mengetik atau sedang dirty
       const isRecentlyEditingTeks = Date.now() - lastEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTeks && data.teks !== lastLocalTeksRef.current) {
-        setTeks(data.teks || '<p></p>');
-        lastLocalTeksRef.current = data.teks || '';
+      if (!isRecentlyEditingTeks && !isDirtyRef.current && resolvedTeks !== lastLocalTeksRef.current) {
+        setTeks(resolvedTeks);
+        lastLocalTeksRef.current = resolvedTeks;
       }
 
       DataService.updateAktivitas(
         username,
-        `Mengerjakan: ${data.judul || 'Tanpa Judul'}`,
+        `Mengerjakan: ${resolvedJudul || 'Tanpa Judul'}`,
         docId
       );
     });
@@ -192,15 +233,15 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       DataService.updateAktivitas(username, 'Beranda', null);
       if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (docId) {
-        DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current).catch(() => {});
-      }
+      // PENTING: DILARANG KERAS memanggil DataService.simpanDokumen di sini!
+      // Cleanup listener TIDAK BOLEH melakukan auto-save karena dapat memicu overwriting kosong saat re-mount!
     };
-  }, [docId, username, onBackToLobby]);
+  }, [docId, username]);
 
   // Debounced title update
   const handleTitleChange = (newTitle: string) => {
     if (newTitle.length > 100) return;
+    isDirtyRef.current = true;
     lastLocalJudulRef.current = newTitle;
     lastTitleEditTimeRef.current = Date.now();
     setJudul(newTitle);
@@ -211,27 +252,39 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       if (doc && doc.status === 'Draf') {
         await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current);
         setSaveStatus('saved');
+        isDirtyRef.current = false;
       }
     }, 600);
   };
 
   // Debounced editor content update
   const handleEditorUpdate = (html: string) => {
+    isDirtyRef.current = true;
     lastLocalTeksRef.current = html;
     lastEditTimeRef.current = Date.now();
     setTeks(html);
     setSaveStatus('saving');
+
+    // Simpan snapshot lokal darurat seketika
+    try {
+      localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
+        judul: lastLocalJudulRef.current,
+        teks: html,
+        timestamp: Date.now()
+      }));
+    } catch {}
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       if (doc && doc.status === 'Draf') {
         await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html);
         setSaveStatus('saved');
+        isDirtyRef.current = false;
       }
     }, 600);
   };
 
-  // Handler Kembali dengan Flush Auto-Save Seketika
+  // Handler Kembali dengan Flush Auto-Save Seketika (HANYA jika user benar-benar mengedit)
   const handleBackWithFlush = async () => {
     if (titleTimerRef.current) {
       clearTimeout(titleTimerRef.current);
@@ -241,11 +294,16 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (doc && doc.status === 'Draf') {
-      try {
-        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current);
-      } catch (e) {
-        console.warn('Gagal flush draf siswa:', e);
+
+    if (doc && doc.status === 'Draf' && isDirtyRef.current) {
+      const hasContent = lastLocalTeksRef.current && lastLocalTeksRef.current !== '<p></p>' && lastLocalTeksRef.current !== '<p><br></p>';
+      if (hasContent || doc.teks === '<p></p>' || doc.teks === '<p><br></p>') {
+        try {
+          await DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current);
+          isDirtyRef.current = false;
+        } catch (e) {
+          console.warn('Gagal flush draf siswa:', e);
+        }
       }
     }
     onBackToLobby();
