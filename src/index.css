@@ -1,0 +1,1111 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  body, html {
+    background-color: #FAF9F6;
+    color: #1C1917;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    scroll-behavior: smooth;
+    scroll-padding-bottom: 180px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html.dark, body.dark, .dark body {
+    background-color: #121214;
+    color: #D4D4D8;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+/* Modern Editorial Utility Classes */
+.editorial-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E7E5E4;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editorial-card:hover {
+  border-color: #D6D3D1;
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.06);
+}
+
+.dark .editorial-card,
+.dark .editorial-card.bg-white,
+.dark [class*="editorial-card"] {
+  background-color: #18181B !important;
+  border-color: #27272A !important;
+  color: #D4D4D8 !important;
+  box-shadow: 0 2px 10px 0 rgba(0, 0, 0, 0.35);
+}
+
+.dark .editorial-card:hover {
+  border-color: #3F3F46 !important;
+  box-shadow: 0 6px 20px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Eye-Comfort Dark Mode Calibration (Meredakan Silau Putih & Teks Neon) */
+.dark {
+  color: #D4D4D8;
+}
+
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  color: #E4E4E7 !important;
+}
+
+.dark strong, .dark b {
+  color: #E4E4E7 !important;
+}
+
+.dark .text-stone-900:not(button, [class*="bg-stone-100"], [class*="bg-white"], [class*="dark:bg-stone-100"], [class*="dark:bg-white"]),
+.dark .text-stone-800:not(button, [class*="bg-stone-100"], [class*="bg-white"], [class*="dark:bg-stone-100"], [class*="dark:bg-white"]),
+.dark .text-stone-700:not(button, [class*="bg-stone-100"], [class*="bg-white"], [class*="dark:bg-stone-100"], [class*="dark:bg-white"]) {
+  color: #D4D4D8;
+}
+
+.dark .text-stone-100:not(button, [class*="dark:bg-stone-100"], [class*="dark:bg-stone-200"], [class*="dark:bg-white"], [class*="dark:text-stone-900"], [class*="dark:text-stone-950"]),
+.dark .text-stone-50:not(button, [class*="dark:bg-stone-100"], [class*="dark:bg-stone-200"], [class*="dark:bg-white"], [class*="dark:text-stone-900"], [class*="dark:text-stone-950"]),
+.dark .text-white:not(button, [class*="dark:bg-stone-100"], [class*="dark:bg-stone-200"], [class*="dark:bg-white"], [class*="dark:text-stone-900"], [class*="dark:text-stone-950"]) {
+  color: #E4E4E7 !important;
+}
+
+/* Pastikan tombol & elemen berlatar terang di Dark Mode selalu memiliki teks gelap pekat dan terbaca sempurna */
+.dark button[class*="dark:bg-stone-100"],
+.dark button[class*="dark:bg-stone-200"],
+.dark button[class*="dark:bg-white"],
+.dark [class*="dark:bg-stone-100"][class*="dark:text-stone-900"],
+.dark [class*="dark:bg-stone-100"][class*="dark:text-stone-950"],
+.dark button.editorial-btn[class*="dark:bg-stone-100"],
+.dark .dark\:text-stone-900,
+.dark .dark\:text-stone-950 {
+  color: #09090b !important;
+}
+
+.dark .text-stone-400,
+.dark .text-stone-500 {
+  color: #A1A1AA !important;
+}
+
+/* Warna Kuning/Amber: Warm muted gold, bukan laser kuning menusuk mata */
+.dark .text-amber-300,
+.dark .text-amber-400,
+.dark .text-amber-500,
+.dark .text-amber-600 {
+  color: #D4A359 !important;
+}
+
+.dark .text-amber-100,
+.dark .text-amber-200 {
+  color: #E8CBA3 !important;
+}
+
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900,
+.dark .text-amber-950 {
+  color: #E0B579 !important;
+}
+
+/* Warna Biru: Calming periwinkle/linear blue, bukan neon menyala */
+.dark .text-blue-400,
+.dark .text-blue-500,
+.dark .text-blue-600,
+.dark .text-blue-700 {
+  color: #7AA2F7 !important;
+}
+
+.dark .text-blue-200,
+.dark .text-blue-300 {
+  color: #A0BDF8 !important;
+}
+
+.dark .text-blue-900,
+.dark .text-blue-950 {
+  color: #7AA2F7 !important;
+}
+
+/* Warna Hijau/Emerald: Soft sage/mint, bukan neon hijau */
+.dark .text-emerald-300,
+.dark .text-emerald-400,
+.dark .text-emerald-500,
+.dark .text-emerald-600 {
+  color: #68B687 !important;
+}
+
+.dark .text-emerald-100,
+.dark .text-emerald-200 {
+  color: #93CEAA !important;
+}
+
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-900,
+.dark .text-emerald-950 {
+  color: #8CC4A2 !important;
+}
+
+/* Warna Merah: Muted coral rose, tidak menusuk */
+.dark .text-red-400,
+.dark .text-red-500,
+.dark .text-red-600 {
+  color: #E06C75 !important;
+}
+
+.dark .text-red-200,
+.dark .text-red-300 {
+  color: #F1989F !important;
+}
+
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900 {
+  color: #E06C75 !important;
+}
+
+/* Warna Ungu */
+.dark .text-purple-400,
+.dark .text-purple-500,
+.dark .text-purple-600 {
+  color: #A996EB !important;
+}
+
+.editorial-input {
+  border: 1px solid #E7E5E4;
+  border-radius: 0.75rem;
+  background-color: #FFFFFF;
+  outline: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1C1917;
+  transition: all 0.15s ease;
+}
+
+.editorial-input:focus {
+  border-color: #1E293B;
+  box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.08);
+}
+
+.dark .editorial-input {
+  background-color: #18181B;
+  border-color: #27272A;
+  color: #FAFAFA;
+}
+
+.dark .editorial-input:focus {
+  border-color: #A1A1AA;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.editorial-btn {
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.15s ease;
+}
+
+.editorial-btn:active {
+  transform: scale(0.98);
+}
+
+/* Font Sastra */
+.font-serif-literary {
+  font-family: 'Source Serif 4', 'Lora', 'Merriweather', Georgia, Cambria, serif;
+  font-variant-numeric: lining-nums proportional-nums;
+  -webkit-font-feature-settings: "lnum" 1, "pnum" 1;
+  font-feature-settings: "lnum" 1, "pnum" 1;
+}
+
+/* Tiptap Editor Modern Styling (Standar Tipografi Editorial) */
+.tiptap {
+  outline: none;
+  min-height: 50vh;
+  padding-bottom: 35vh;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: #292524;
+  letter-spacing: 0.005em;
+  font-variant-numeric: lining-nums proportional-nums;
+  -webkit-font-feature-settings: "lnum" 1, "pnum" 1;
+  font-feature-settings: "lnum" 1, "pnum" 1;
+  -webkit-spellcheck: false;
+  counter-reset: footnote-counter;
+}
+
+.dark .tiptap {
+  color: #D4D4D8;
+}
+
+.dark .tiptap h1, 
+.dark .tiptap h2, 
+.dark .tiptap h3, 
+.dark .tiptap strong {
+  color: #E4E4E7 !important;
+}
+
+/* Penanda Kutipan Catatan Kaki (Footnote) - Standar Akademik Polos Bersih */
+.nulis-footnote-ref {
+  counter-increment: footnote-counter;
+  display: inline-block;
+  vertical-align: super;
+  font-size: 0.75em;
+  line-height: 1;
+  font-weight: 600;
+  color: #1c1917;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 1.5px !important;
+  margin: 0 1px;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.dark .nulis-footnote-ref {
+  color: #E4E4E7 !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+.nulis-footnote-ref:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
+
+.dark .nulis-footnote-ref:hover {
+  opacity: 0.85;
+}
+
+.nulis-footnote-ref::after {
+  content: counter(footnote-counter);
+}
+
+/* Lembaran Kertas (Paper Sheet / Word Layout) Styling */
+.paper-desk-container {
+  background-color: #F1F0EC;
+  border-radius: 1.25rem;
+  padding: 2.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  transition: background-color 0.2s ease;
+}
+
+.dark .paper-desk-container {
+  background-color: #121214 !important;
+}
+
+/* Lembar Naskah A4 Tunggal Berkelanjutan (Word-Style Single Continuous Document) */
+.paper-a4-canvas {
+  width: 100%;
+  max-width: 816px;
+  min-height: 1056px;
+  background-color: #FFFFFF;
+  color: #1C1917;
+  border: 1px solid #E2E0DC;
+  border-radius: 4px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
+  padding: 3.5rem 3.5rem;
+  position: relative;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  margin: 0 auto;
+}
+
+.dark .paper-a4-canvas {
+  background-color: #1A1A1D !important;
+  color: #D4D4D8 !important;
+  border-color: #2E2E33 !important;
+  box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4) !important;
+}
+
+@media (min-width: 640px) {
+  .paper-a4-canvas {
+    padding: 4rem 4.5rem;
+  }
+}
+
+/* Pemisah Halaman (Page Break & Auto Page Divider Standar A4) */
+.nulis-page-boundary {
+  display: block;
+  width: 100%;
+  margin: 1.25rem 0 0.75rem 0;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.nulis-page-footer {
+  padding-top: 0.35rem;
+  margin-bottom: 0.4rem;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif;
+}
+
+.nulis-page-footer-divider {
+  width: 55px;
+  height: 1px;
+  background-color: #1C1917;
+  margin-bottom: 0.35rem;
+}
+
+.dark .nulis-page-footer-divider {
+  background-color: #71717A;
+}
+
+.nulis-page-footer-item {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #57534E;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 0.15rem;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dark .nulis-page-footer-item {
+  color: #D4D4D8;
+}
+
+.nulis-page-footer-item:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dark .nulis-page-footer-item:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.nulis-page-gap-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 0;
+  background-color: transparent;
+  border-top: 1px solid #1C1917;
+  margin: 0.75rem 0 1rem 0;
+}
+
+.dark .nulis-page-gap-divider {
+  background-color: transparent;
+  border-top: 1px solid #71717A;
+}
+
+.nulis-page-footer-num {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #1C1917;
+  user-select: none;
+  padding-top: 0.25rem;
+}
+
+.dark .nulis-page-footer-num {
+  color: #D4D4D8;
+  font-weight: 400;
+}
+
+.nulis-auto-page-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 2rem 0 1.5rem 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.nulis-page-divider-rule {
+  flex: 1;
+  height: 1px;
+  background-color: #1C1917;
+}
+
+.dark .nulis-page-divider-rule {
+  background-color: #52525B;
+}
+
+.nulis-page-divider-tag {
+  margin-left: 1rem;
+  font-size: 0.6875rem;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  color: #1C1917;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dark .nulis-page-divider-tag {
+  color: #A1A1AA;
+}
+
+/* Pemisah Halaman (Page Break / Tambah Halaman) */
+.nulis-page-break {
+  display: block;
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.mode-web .nulis-page-break {
+  height: 1px;
+  border-top: 1px solid #1C1917;
+  margin: 1.5rem 0;
+}
+
+.dark .mode-web .nulis-page-break {
+  border-top-color: #52525B;
+}
+
+.mode-kertas .nulis-page-break {
+  display: none !important;
+}
+
+.nulis-page-manual-spacer {
+  display: block;
+  width: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media print {
+  .nulis-page-break,
+  .nulis-auto-page-divider,
+  .nulis-page-gap-divider,
+  .nulis-table-page-break-row {
+    page-break-before: always !important;
+    break-before: page !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden;
+  }
+}
+
+.tiptap p {
+  margin-top: 0;
+  margin-bottom: 0.8em;
+  line-height: 1.75;
+}
+
+.tiptap p[data-indent] {
+  transition: margin-left 0.15s ease;
+}
+
+/* Indentasi Paragraf Hierarki yang Rapi dan Pas */
+.tiptap p[data-indent="1"] {
+  margin-left: 1.25rem !important;
+}
+
+.tiptap p[data-indent="2"] {
+  margin-left: 2.5rem !important;
+}
+
+.tiptap p[data-indent="3"] {
+  margin-left: 3.75rem !important;
+}
+
+.tiptap p[data-indent="4"] {
+  margin-left: 5rem !important;
+}
+
+/* Indentasi Gantung / Hanging Indent untuk Penulisan Daftar Pustaka (APA / MLA / IEEE) */
+.tiptap p.nulis-hanging-indent,
+.tiptap p[data-hanging-indent="true"],
+.prose p.nulis-hanging-indent,
+.prose p[data-hanging-indent="true"] {
+  padding-left: 2rem !important;
+  text-indent: -2rem !important;
+}
+
+/* Headings dengan tipografi sastra yang tegas */
+.tiptap h1 {
+  font-size: 2.25rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  color: #1C1917 !important;
+  margin-top: 1.75rem !important;
+  margin-bottom: 0.85rem !important;
+  letter-spacing: -0.02em !important;
+  display: block !important;
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+.tiptap h2 {
+  font-size: 1.65rem !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  color: #292524 !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.65rem !important;
+  letter-spacing: -0.01em !important;
+  display: block !important;
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+.tiptap h3 {
+  font-size: 1.35rem !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  color: #44403C !important;
+  margin-top: 1.25rem !important;
+  margin-bottom: 0.5rem !important;
+  display: block !important;
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+/* Lists dengan peluru (bullet) dan penomoran subbab bertingkat (1.1, 1.1.1) */
+.tiptap ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin: 0.75rem 0 1.25rem !important;
+  display: block !important;
+}
+
+.tiptap ol {
+  list-style-type: none !important;
+  counter-reset: item;
+  padding-left: 1.25rem !important;
+  margin: 0.5rem 0 1rem !important;
+  display: block !important;
+}
+
+.tiptap ol ol {
+  padding-left: 1.25rem !important;
+  margin: 0.25rem 0 !important;
+}
+
+.tiptap ol > li {
+  display: block !important;
+  counter-increment: item;
+  margin-bottom: 0.35rem !important;
+  line-height: 1.8 !important;
+  position: relative;
+}
+
+.tiptap ol > li::before {
+  content: counters(item, ".") ". ";
+  font-weight: 700;
+  color: #44403C;
+  position: absolute;
+  left: -1.25rem;
+  font-variant-numeric: lining-nums proportional-nums;
+  -webkit-font-feature-settings: "lnum" 1, "pnum" 1;
+  font-feature-settings: "lnum" 1, "pnum" 1;
+}
+
+.tiptap li p {
+  margin-bottom: 0.2rem !important;
+  display: inline !important;
+}
+
+/* Tabel Data Akademik & Editorial (Standar Karya Ilmiah & APA) */
+.tiptap .tableWrapper {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  padding: 4px;
+}
+
+.tiptap table,
+.tiptap .tableWrapper table,
+table.nulis-table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  table-layout: fixed !important;
+  width: 100% !important;
+  border: none !important;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif;
+}
+
+.tiptap table td,
+.tiptap table th,
+.tiptap .tableWrapper td,
+.tiptap .tableWrapper th,
+table.nulis-table td,
+table.nulis-table th {
+  min-width: 2em;
+  border: 1.5px solid #1C1917 !important;
+  padding: 0.6rem 0.85rem !important;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.tiptap table th,
+.tiptap .tableWrapper th,
+table.nulis-table th {
+  font-weight: 700 !important;
+  text-align: left !important;
+  background-color: transparent;
+  color: #000000 !important;
+  border: 1.5px solid #1C1917 !important;
+}
+
+.tiptap table td[data-background-color],
+.tiptap table th[data-background-color] {
+  /* Warna latar kustom pilihan pengguna */
+}
+
+.tiptap table p {
+  margin: 0 !important;
+  line-height: 1.5 !important;
+}
+
+.dark .tiptap table,
+.dark .tiptap .tableWrapper table,
+.dark table.nulis-table {
+  border: none !important;
+}
+
+.dark .tiptap table td,
+.dark .tiptap table th,
+.dark .tiptap .tableWrapper td,
+.dark .tiptap .tableWrapper th,
+.dark table.nulis-table td,
+.dark table.nulis-table th {
+  border: 1.5px solid #A1A1AA !important;
+}
+
+.dark .tiptap table th,
+.dark .tiptap .tableWrapper th,
+.dark table.nulis-table th {
+  background-color: transparent;
+  color: #FAFAFA !important;
+  border: 1.5px solid #A1A1AA !important;
+}
+
+/* Pemisah Halaman Tabel Bersambung (Multi-page Table Continuation) */
+.tiptap table tr.nulis-table-page-break-row,
+.tiptap .tableWrapper table tr.nulis-table-page-break-row,
+table.nulis-table tr.nulis-table-page-break-row {
+  border: none !important;
+  outline: none !important;
+  background-color: transparent !important;
+  user-select: none !important;
+}
+
+.tiptap table td.nulis-table-page-break-cell,
+.tiptap .tableWrapper td.nulis-table-page-break-cell,
+table.nulis-table td.nulis-table-page-break-cell {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background-color: transparent !important;
+  user-select: none !important;
+  box-sizing: border-box !important;
+}
+
+.dark .tiptap table td.nulis-table-page-break-cell,
+.dark .tiptap .tableWrapper td.nulis-table-page-break-cell,
+.dark table.nulis-table td.nulis-table-page-break-cell {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+
+.nulis-table-break-content {
+  display: block;
+  width: 100%;
+  padding: 1.25rem 0 1.5rem 0;
+  margin: 0;
+  user-select: none;
+  pointer-events: auto !important;
+}
+
+.nulis-table-break-content .nulis-page-footer {
+  pointer-events: auto !important;
+}
+
+.nulis-table-break-content .nulis-page-footer-item {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Blok Daftar Isi Halaman Depan (Format Teks Biasa Buku Ilmiah Tanpa Background & Border) */
+.nulis-doc-toc {
+  margin: 1.5rem 0 2.5rem 0;
+  padding: 0 !important;
+  border: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif;
+  user-select: none;
+  position: relative;
+}
+
+.dark .nulis-doc-toc {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.nulis-doc-toc-title {
+  text-align: center;
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1C1917;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #1C1917;
+}
+
+.dark .nulis-doc-toc-title {
+  color: #F4F4F5;
+  border-bottom-color: #71717A;
+}
+
+.nulis-doc-toc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0.4rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #1C1917;
+  cursor: pointer;
+  padding: 0.1rem 0;
+  transition: opacity 0.15s ease;
+}
+
+.dark .nulis-doc-toc-row {
+  color: #D4D4D8;
+}
+
+.nulis-doc-toc-row:hover {
+  opacity: 0.75;
+}
+
+.nulis-doc-toc-dots {
+  flex: 1;
+  border-bottom: 1px dotted #78716C;
+  margin: 0 0.5rem;
+  height: 0;
+  transform: translateY(-3px);
+  opacity: 0.6;
+}
+
+.dark .nulis-doc-toc-dots {
+  border-bottom-color: #A1A1AA;
+  opacity: 0.5;
+}
+
+.nulis-doc-toc-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.nulis-doc-toc-dots {
+  flex: 1;
+  border-bottom: 1px dotted #78716C;
+  margin: 0 0.5rem 0.25rem 0.5rem;
+}
+
+.dark .nulis-doc-toc-dots {
+  border-bottom-color: #71717A;
+}
+
+.nulis-doc-toc-num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.25rem;
+  color: #1C1917;
+}
+
+.dark .nulis-doc-toc-num {
+  color: #FAFAFA;
+}
+
+.tiptap table .selectedCell:after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(30, 41, 59, 0.1);
+  pointer-events: none;
+}
+
+.dark .tiptap table .selectedCell:after {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tiptap table .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: #78716C;
+  pointer-events: none;
+}
+
+/* Animasi Spotlight Sorotan Catatan Guru pada Teks */
+@keyframes markPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(168, 162, 158, 0.7);
+    outline: 3px solid #78716C;
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(168, 162, 158, 0);
+    outline: 4px solid #57534E;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(168, 162, 158, 0);
+    outline: 3px solid #78716C;
+  }
+}
+
+.mark-spotlight {
+  animation: markPulse 0.7s ease-in-out infinite;
+  border-radius: 4px;
+  position: relative;
+  z-index: 10;
+}
+
+/* Kutipan Sastra / Blockquote */
+.tiptap blockquote {
+  border-left: 4px solid #78716C !important;
+  background-color: #F5F5F4 !important;
+  padding: 0.85rem 1.25rem !important;
+  margin: 1.5rem 0 !important;
+  border-radius: 0 0.5rem 0.5rem 0 !important;
+  font-style: italic !important;
+  color: #44403C !important;
+  display: block !important;
+}
+
+.tiptap blockquote p {
+  margin-bottom: 0.5rem !important;
+}
+
+.tiptap blockquote p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Garis Pembatas Bab / Horizontal Rule */
+.tiptap hr {
+  border: none !important;
+  border-top: 2px dashed #D6D3D1 !important;
+  margin: 2.25rem 0 !important;
+  display: block !important;
+}
+
+.dark .tiptap blockquote {
+  border-left-color: #A8A29E !important;
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  color: #E4E4E7 !important;
+}
+
+.dark .tiptap hr {
+  border-top-color: #3F3F46 !important;
+}
+
+/* Format Dasar */
+.tiptap strong {
+  font-weight: 700 !important;
+  color: #1C1917 !important;
+}
+
+.tiptap em {
+  font-style: italic !important;
+}
+
+.tiptap u {
+  text-decoration: underline !important;
+  text-underline-offset: 3px !important;
+}
+
+.tiptap p.is-editor-empty:first-child:only-child[data-placeholder]:not([data-placeholder=""]) {
+  position: relative;
+}
+
+.tiptap p.is-editor-empty:first-child:only-child[data-placeholder]:not([data-placeholder=""])::before {
+  color: #A8A29E;
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  font-style: italic;
+}
+
+.dark .tiptap p.is-editor-empty:first-child:only-child[data-placeholder]:not([data-placeholder=""])::before {
+  color: #71717A;
+}
+
+/* Highlight Koreksi Guru (Tegas & Rata Naskah) */
+mark, .tiptap mark {
+  background-color: #FDE047;
+  border-bottom: 2px solid #CA8A04;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  color: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+mark:hover, .tiptap mark:hover {
+  background-color: #FACC15;
+}
+
+/* Penomoran Bertingkat Subbab (Multilevel List 1., 1.1, 1.1.1, 1.1.1.1) */
+.tiptap ol, .prose ol {
+  list-style-type: none !important;
+  counter-reset: nulis-l1;
+  padding-left: 0.25rem;
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.tiptap ol > li, .prose ol > li {
+  counter-increment: nulis-l1;
+  counter-reset: nulis-l2;
+  position: relative;
+  padding-left: 1.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.tiptap ol > li::before, .prose ol > li::before {
+  content: counter(nulis-l1) ".";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+  color: #292524;
+  min-width: 1.5rem;
+}
+
+/* Level 2: 1.1 */
+.tiptap ol > li > ol, .prose ol > li > ol {
+  counter-reset: nulis-l2;
+  padding-left: 0.25rem;
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li, .prose ol > li > ol > li {
+  counter-increment: nulis-l2;
+  counter-reset: nulis-l3;
+  position: relative;
+  padding-left: 2.25rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li::before, .prose ol > li > ol > li::before {
+  content: counter(nulis-l1) "." counter(nulis-l2);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+  color: #292524;
+  min-width: 2rem;
+}
+
+/* Level 3: 1.1.1 */
+.tiptap ol > li > ol > li > ol, .prose ol > li > ol > li > ol {
+  counter-reset: nulis-l3;
+  padding-left: 0.25rem;
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li > ol > li, .prose ol > li > ol > li > ol > li {
+  counter-increment: nulis-l3;
+  counter-reset: nulis-l4;
+  position: relative;
+  padding-left: 2.85rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li > ol > li::before, .prose ol > li > ol > li > ol > li::before {
+  content: counter(nulis-l1) "." counter(nulis-l2) "." counter(nulis-l3);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+  color: #292524;
+  min-width: 2.6rem;
+}
+
+/* Level 4: 1.1.1.1 (Maksimal 4 Level) */
+.tiptap ol > li > ol > li > ol > li > ol, .prose ol > li > ol > li > ol > li > ol {
+  counter-reset: nulis-l4;
+  padding-left: 0.25rem;
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li > ol > li > ol > li, .prose ol > li > ol > li > ol > li > ol > li {
+  counter-increment: nulis-l4;
+  position: relative;
+  padding-left: 3.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.tiptap ol > li > ol > li > ol > li > ol > li::before, .prose ol > li > ol > li > ol > li > ol > li::before {
+  content: counter(nulis-l1) "." counter(nulis-l2) "." counter(nulis-l3) "." counter(nulis-l4);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+  color: #292524;
+  min-width: 3.25rem;
+}
+
+/* Halus Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D6D3D1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A29E;
+}
