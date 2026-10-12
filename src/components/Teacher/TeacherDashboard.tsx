@@ -569,6 +569,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
               onTandaiSelesai={handleTandaiSelesai}
               penugasanList={penugasanList}
               onOpenNewPenugasanModal={() => setIsPenugasanModalOpen(true)}
+              onDokumenUpdated={() => {
+                DataService.getDokumen().then((docs) => setDokumenMap(docs));
+              }}
             />
           )}
 

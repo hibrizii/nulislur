@@ -385,6 +385,60 @@ const TabIndent = Extension.create({
   },
 });
 
+interface HighlightSpan {
+  from: number;
+  to: number;
+  mark: any;
+  text: string;
+}
+
+function findHighlightSpan(doc: any, pos: number): HighlightSpan | null {
+  try {
+    if (!doc || pos < 0 || pos > doc.content.size) return null;
+    const $pos = doc.resolve(pos);
+    const parent = $pos.parent;
+    if (!parent || !parent.isTextblock) return null;
+
+    const parentStart = $pos.start();
+    let currentPos = parentStart;
+    const matches: HighlightSpan[] = [];
+
+    for (let i = 0; i < parent.childCount; i++) {
+      const child = parent.child(i);
+      const childFrom = currentPos;
+      const childTo = currentPos + child.nodeSize;
+
+      if (child.isText && child.marks) {
+        const hl = child.marks.find((m: any) => m.type.name === 'highlight');
+        if (hl) {
+          const prev = matches[matches.length - 1];
+          if (prev && prev.to === childFrom && prev.mark.eq(hl)) {
+            prev.to = childTo;
+            prev.text += child.text || '';
+          } else {
+            matches.push({
+              from: childFrom,
+              to: childTo,
+              mark: hl,
+              text: child.text || '',
+            });
+          }
+        }
+      }
+      currentPos = childTo;
+    }
+
+    for (const m of matches) {
+      if (pos >= m.from && pos <= m.to) {
+        return m;
+      }
+    }
+  } catch (e) {
+    console.error('Error finding highlight span:', e);
+  }
+  return null;
+}
+
 const CustomHighlight = Highlight.extend({
   inclusive: false,
   addAttributes() {
@@ -422,23 +476,144 @@ const CustomHighlight = Highlight.extend({
         props: {
           handleTextInput(view, from, to, text) {
             const { state } = view;
-            const marks = state.storedMarks || state.selection.$from.marks();
-            if (marks && marks.some(m => m.type.name === 'highlight')) {
-              const cleanMarks = marks.filter(m => m.type.name !== 'highlight');
+            const hl = findHighlightSpan(state.doc, from);
+
+            if (hl) {
+              // 1. Boundary Anti-Bleed: Jika kursor berada di batas akhir highlight (from === hl.to)
+              // Ketikan baru TIDAK BOLEH terbawa highlight (tidak terseret)
+              if (from === hl.to) {
+                const cleanMarks = (state.storedMarks || state.selection.$from.marks()).filter(
+                  (m) => m.type.name !== 'highlight'
+                );
+                const tr = state.tr.replaceWith(from, to, state.schema.text(text, cleanMarks));
+                tr.setStoredMarks(cleanMarks);
+                view.dispatch(tr);
+                return true;
+              }
+
+              // 2. Placeholder Slot Replacement: Jika mark berisi placeholder '\u00a0' atau spasi kosong
+              if (hl.text === '\u00a0' || hl.text === ' ') {
+                const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text(text, [hl.mark]));
+                tr.setSelection(TextSelection.create(tr.doc, hl.from + text.length));
+                tr.setStoredMarks([hl.mark]);
+                view.dispatch(tr);
+                return true;
+              }
+
+              // 3. Typing Inside Highlight (Anti-Split): Ketikan di dalam kata highlight mewarisi mark yang sama persis
+              const marks = [
+                hl.mark,
+                ...state.selection.$from.marks().filter((m) => m.type.name !== 'highlight'),
+              ];
+              const tr = state.tr.replaceWith(from, to, state.schema.text(text, marks));
+              tr.setStoredMarks(marks);
+              view.dispatch(tr);
+              return true;
+            }
+
+            // Jika di luar highlight namun storedMarks membawa highlight secara tidak sengaja, bersihkan
+            const stored = state.storedMarks;
+            if (stored && stored.some((m) => m.type.name === 'highlight')) {
+              const cleanMarks = stored.filter((m) => m.type.name !== 'highlight');
               const tr = state.tr.replaceWith(from, to, state.schema.text(text, cleanMarks));
               tr.setStoredMarks(cleanMarks);
               view.dispatch(tr);
               return true;
             }
+
+            return false;
+          },
+
+          handleKeyDown(view, event) {
+            if (event.key !== 'Backspace' && event.key !== 'Delete') {
+              return false;
+            }
+
+            const { state } = view;
+            const { selection } = state;
+
+            // 1. Kursor Kolaps (Single Caret)
+            if (selection.empty) {
+              if (event.key === 'Backspace') {
+                if (selection.from <= 1) return false;
+                const targetPos = selection.from - 1;
+                const hl = findHighlightSpan(state.doc, targetPos);
+                if (hl) {
+                  // Jika hanya tersisa 1 karakter di dalam highlight
+                  if (hl.to - hl.from <= 1) {
+                    // Jika sudah berupa slot spasi terlindungi, jangan biarkan siswa menghapusnya
+                    if (hl.text === '\u00a0' || hl.text === ' ') {
+                      return true;
+                    }
+                    // Ganti karakter terakhir dengan slot \u00a0 yang tetap mempertahankan highlight & catatannya
+                    const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text('\u00a0', [hl.mark]));
+                    tr.setSelection(TextSelection.create(tr.doc, hl.to));
+                    view.dispatch(tr);
+                    return true;
+                  }
+                }
+              } else if (event.key === 'Delete') {
+                const targetPos = selection.from;
+                const hl = findHighlightSpan(state.doc, targetPos);
+                if (hl) {
+                  if (hl.to - hl.from <= 1) {
+                    if (hl.text === '\u00a0' || hl.text === ' ') {
+                      return true;
+                    }
+                    const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text('\u00a0', [hl.mark]));
+                    tr.setSelection(TextSelection.create(tr.doc, hl.from));
+                    view.dispatch(tr);
+                    return true;
+                  }
+                }
+              }
+            } else {
+              // 2. Seleksi Rentang (!selection.empty)
+              // Jika siswa memblok kata ber-highlight dan menekan Backspace/Delete
+              const hl = findHighlightSpan(state.doc, selection.from);
+              if (hl && selection.from >= hl.from && selection.to <= hl.to) {
+                if (selection.from === hl.from && selection.to === hl.to) {
+                  const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text('\u00a0', [hl.mark]));
+                  tr.setSelection(TextSelection.create(tr.doc, hl.from + 1));
+                  view.dispatch(tr);
+                  return true;
+                }
+              }
+            }
+
+            return false;
+          },
+
+          handlePaste(view, _event, slice) {
+            const { state } = view;
+            const { selection } = state;
+            if (selection.empty) {
+              const hl = findHighlightSpan(state.doc, selection.from);
+              if (hl && (hl.text === '\u00a0' || hl.text === ' ')) {
+                const text = slice.content.textBetween(0, slice.content.size);
+                if (text) {
+                  const tr = state.tr.replaceWith(hl.from, hl.to, state.schema.text(text, [hl.mark]));
+                  tr.setSelection(TextSelection.create(tr.doc, hl.from + text.length));
+                  view.dispatch(tr);
+                  return true;
+                }
+              }
+            }
             return false;
           },
         },
+
         appendTransaction(_transactions, _oldState, newState) {
           const { selection } = newState;
           if (selection.empty) {
+            const pos = selection.from;
+            const hl = findHighlightSpan(newState.doc, pos);
             const marks = newState.storedMarks || selection.$from.marks();
-            if (marks && marks.some(m => m.type.name === 'highlight')) {
-              const cleanMarks = marks.filter(m => m.type.name !== 'highlight');
+            const hasHl = marks && marks.some((m) => m.type.name === 'highlight');
+
+            // Jika kursor berada di luar highlight atau di batas akhir (hl.to), bersihkan storedMarks agar tidak menyeret highlight
+            if (hasHl && (!hl || pos === hl.to)) {
+              const cleanMarks = marks.filter((m) => m.type.name !== 'highlight');
               const tr = newState.tr;
               tr.setStoredMarks(cleanMarks);
               return tr;
@@ -1622,12 +1797,29 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
   // Active Mark Feedback (saat guru mengklik highlight yang sudah ada)
   const [activeMarkFeedback, setActiveMarkFeedback] = useState<{
     pesan: string;
+    tag?: string;
     text: string;
     markElement: HTMLElement | null;
     rect?: DOMRect;
   } | null>(null);
   const [isEditingFeedback, setIsEditingFeedback] = useState(false);
   const [editingFeedbackText, setEditingFeedbackText] = useState('');
+  const [editingFeedbackTags, setEditingFeedbackTags] = useState<string[]>([]);
+  const [editSlashOpen, setEditSlashOpen] = useState(false);
+  const [editSlashQuery, setEditSlashQuery] = useState('');
+  const [editSlashSelectedIndex, setEditSlashSelectedIndex] = useState(0);
+  const editFeedbackTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editSlashDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredEditOptions = React.useMemo(() => {
+    if (!editSlashQuery.trim()) return TEACHER_FEEDBACK_OPTIONS;
+    const q = editSlashQuery.toLowerCase().trim();
+    return TEACHER_FEEDBACK_OPTIONS.filter((opt) =>
+      opt.label.toLowerCase().includes(q) ||
+      opt.tag.toLowerCase().includes(q) ||
+      opt.keywords.some((kw) => kw.includes(q))
+    );
+  }, [editSlashQuery]);
 
   // Slash Command (/) State
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
@@ -2837,17 +3029,26 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
           const mark = target.closest('mark');
           if (mark) {
             const pesan = mark.getAttribute('data-pesan') || '';
+            const rawTag = mark.getAttribute('data-tag') || '';
             const text = mark.textContent || '';
             const rect = mark.getBoundingClientRect();
             if (isTeacher) {
+              const tagsFromAttr = rawTag ? rawTag.split(/[\s,]+/).filter(Boolean) : [];
+              if (tagsFromAttr.length === 0) {
+                const opt = TEACHER_FEEDBACK_OPTIONS.find((o) => pesan.includes(o.tag));
+                if (opt) tagsFromAttr.push(opt.id);
+              }
               setActiveMarkFeedback({
                 pesan,
+                tag: rawTag,
                 text,
                 markElement: mark,
                 rect,
               });
               setIsEditingFeedback(false);
               setEditingFeedbackText(pesan);
+              setEditingFeedbackTags(tagsFromAttr);
+              setEditSlashOpen(false);
             } else if (onHoverFeedback) {
               onHoverFeedback({
                 pesan,
@@ -3635,16 +3836,124 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     setTeacherSlashOpen(false);
   };
 
+  // Handler Perubahan Teks Catatan saat Mode Edit
+  const handleEditFeedbackChange = (text: string) => {
+    setEditingFeedbackText(text);
+    const cursor = editFeedbackTextareaRef.current?.selectionStart ?? text.length;
+    const beforeCursor = text.slice(0, cursor);
+    const slashMatch = beforeCursor.match(/(?:^|\s)\/([a-zA-Z0-9_]*)$/);
+    if (slashMatch) {
+      setEditSlashQuery(slashMatch[1]);
+      setEditSlashOpen(true);
+      setEditSlashSelectedIndex(0);
+    } else {
+      setEditSlashOpen(false);
+    }
+  };
+
+  // Pilih Tag Rubrik dari Pill saat Edit
+  const handleSelectEditTag = (option: TeacherFeedbackOption) => {
+    setEditingFeedbackTags([option.id]);
+    let text = editingFeedbackText;
+    const previousOption = TEACHER_FEEDBACK_OPTIONS.find((o) => text.includes(o.tag));
+    if (previousOption) {
+      text = text.replace(previousOption.tag, option.tag);
+    } else {
+      text = `${option.tag} ${text}`.trim();
+    }
+    setEditingFeedbackText(text);
+    setEditSlashOpen(false);
+    setTimeout(() => {
+      editFeedbackTextareaRef.current?.focus();
+    }, 20);
+  };
+
+  // Sisipkan Tag dari Slash Command saat Edit
+  const handleInsertEditOption = (option: TeacherFeedbackOption) => {
+    setEditingFeedbackTags([option.id]);
+    const cursor = editFeedbackTextareaRef.current?.selectionStart ?? editingFeedbackText.length;
+    const beforeCursor = editingFeedbackText.slice(0, cursor);
+    const afterCursor = editingFeedbackText.slice(cursor);
+    const slashMatch = beforeCursor.match(/(?:^|\s)\/([a-zA-Z0-9_]*)$/);
+    let cleanBefore = beforeCursor;
+    if (slashMatch) {
+      cleanBefore = beforeCursor.slice(0, beforeCursor.length - slashMatch[1].length - 1);
+    }
+
+    // Ganti tag sebelumnya jika ada di cleanBefore
+    TEACHER_FEEDBACK_OPTIONS.forEach((o) => {
+      if (cleanBefore.includes(o.tag)) {
+        cleanBefore = cleanBefore.replace(o.tag, '').trim();
+      }
+    });
+
+    const newText = `${option.tag} ${cleanBefore} ${afterCursor}`.replace(/\s+/g, ' ').trim();
+    setEditingFeedbackText(newText);
+    setEditSlashOpen(false);
+    setTimeout(() => {
+      editFeedbackTextareaRef.current?.focus();
+    }, 20);
+  };
+
+  // Keyboard navigation untuk dropdown slash saat edit
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (editSlashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setEditSlashSelectedIndex((prev) => (prev + 1) % filteredEditOptions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setEditSlashSelectedIndex((prev) => (prev - 1 + filteredEditOptions.length) % filteredEditOptions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        if (filteredEditOptions[editSlashSelectedIndex]) {
+          handleInsertEditOption(filteredEditOptions[editSlashSelectedIndex]);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setEditSlashOpen(false);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      saveEditedFeedback();
+    }
+  };
+
   // Simpan hasil edit catatan highlight guru
   const saveEditedFeedback = () => {
     if (!activeMarkFeedback?.markElement || !editor) return;
-    const newPesan = editingFeedbackText.trim();
+    let newPesan = editingFeedbackText.trim();
+    const tagOptions = editingFeedbackTags
+      .map((id) => TEACHER_FEEDBACK_OPTIONS.find((o) => o.id === id))
+      .filter((opt): opt is TeacherFeedbackOption => Boolean(opt));
+
+    tagOptions.forEach((opt) => {
+      if (!newPesan.includes(opt.tag)) {
+        newPesan = `${opt.tag} ${newPesan}`.trim();
+      }
+    });
+
     activeMarkFeedback.markElement.setAttribute('data-pesan', newPesan || 'Perlu perbaikan');
+    if (editingFeedbackTags.length > 0) {
+      activeMarkFeedback.markElement.setAttribute('data-tag', editingFeedbackTags.join(','));
+    } else {
+      activeMarkFeedback.markElement.removeAttribute('data-tag');
+    }
+
     const updatedHtml = editor.view.dom.innerHTML;
     editor.commands.setContent(updatedHtml, { emitUpdate: false });
     onUpdateRef.current?.(editor.getHTML());
-    setActiveMarkFeedback((prev) => (prev ? { ...prev, pesan: newPesan } : null));
+    setActiveMarkFeedback((prev) => (prev ? { ...prev, pesan: newPesan, tag: editingFeedbackTags.join(',') } : null));
     setIsEditingFeedback(false);
+    setEditSlashOpen(false);
   };
 
   // Hapus highlight tertentu (sesuai flow AppScript hapusFeedback)
@@ -3653,16 +3962,21 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     const markEl = activeMarkFeedback.markElement;
     const parent = markEl.parentNode;
     if (parent) {
-      while (markEl.firstChild) {
-        parent.insertBefore(markEl.firstChild, markEl);
+      if (markEl.textContent === '\u00a0' || markEl.textContent === ' ') {
+        parent.removeChild(markEl);
+      } else {
+        while (markEl.firstChild) {
+          parent.insertBefore(markEl.firstChild, markEl);
+        }
+        parent.removeChild(markEl);
       }
-      parent.removeChild(markEl);
       const updatedHtml = editor.view.dom.innerHTML;
       editor.commands.setContent(updatedHtml, { emitUpdate: false });
       onUpdateRef.current?.(editor.getHTML());
     }
     setActiveMarkFeedback(null);
     setIsEditingFeedback(false);
+    setEditSlashOpen(false);
   };
 
   // Update posisi popup saat di-scroll atau resize layar
@@ -3693,10 +4007,15 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       if (!target.closest('.teacher-feedback-popup') && !target.closest('mark')) {
         setActiveMarkFeedback(null);
         setIsEditingFeedback(false);
+        setEditSlashOpen(false);
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (editSlashOpen) {
+          setEditSlashOpen(false);
+          return;
+        }
         setActiveMarkFeedback(null);
         setIsEditingFeedback(false);
       }
@@ -3707,14 +4026,14 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       document.removeEventListener('mousedown', handleOutsideClick);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeMarkFeedback]);
+  }, [activeMarkFeedback, editSlashOpen]);
 
   // Hitung posisi floating popup tepat di dekat mark
   const teacherPopupCoords = useMemo(() => {
     if (!activeMarkFeedback?.rect) return null;
     const { rect } = activeMarkFeedback;
-    const popupWidth = 320;
-    const popupHeight = isEditingFeedback ? 180 : 130;
+    const popupWidth = isEditingFeedback ? 360 : 320;
+    const popupHeight = isEditingFeedback ? (editSlashOpen ? 320 : 230) : 130;
     const spaceAbove = rect.top;
     const isAbove = spaceAbove >= popupHeight + 12;
 
@@ -3729,7 +4048,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       isAbove,
       notchLeft,
     };
-  }, [activeMarkFeedback, isEditingFeedback]);
+  }, [activeMarkFeedback, isEditingFeedback, editSlashOpen]);
 
   return (
     <div className="relative">
@@ -3741,7 +4060,9 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             left: `${teacherPopupCoords.left}px`,
             transform: teacherPopupCoords.isAbove ? 'translateY(-100%)' : 'none',
           }}
-          className="fixed z-50 w-80 max-w-[calc(100vw-32px)] editorial-card bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-2 border-amber-400 dark:border-amber-500 p-3.5 shadow-2xl rounded-2xl animate-in fade-in zoom-in-95 pointer-events-auto teacher-feedback-popup"
+          className={`fixed z-50 ${
+            isEditingFeedback ? 'w-[360px]' : 'w-80'
+          } max-w-[calc(100vw-32px)] editorial-card bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-2 border-amber-400 dark:border-amber-500 p-3.5 shadow-2xl rounded-2xl animate-in fade-in zoom-in-95 pointer-events-auto teacher-feedback-popup`}
         >
           {/* Segitiga penunjuk arah kata */}
           <div
@@ -3765,6 +4086,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               onClick={() => {
                 setActiveMarkFeedback(null);
                 setIsEditingFeedback(false);
+                setEditSlashOpen(false);
               }}
               className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer p-0.5 rounded"
               title="Tutup (Esc)"
@@ -3775,6 +4097,21 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           {!isEditingFeedback ? (
             <div className="relative z-10">
+              {activeMarkFeedback.tag && (
+                <div className="mb-2 flex flex-wrap gap-1">
+                  {activeMarkFeedback.tag.split(/[\s,]+/).filter(Boolean).map((t) => {
+                    const opt = TEACHER_FEEDBACK_OPTIONS.find((o) => o.id === t);
+                    return (
+                      <span
+                        key={t}
+                        className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 text-[10px] font-bold border border-amber-300/70 dark:border-amber-800"
+                      >
+                        {opt ? opt.tag : `[${t}]`}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               <p className="text-xs text-stone-700 dark:text-stone-200 bg-amber-50/60 dark:bg-stone-800/60 p-2.5 rounded-xl border border-amber-200/60 dark:border-stone-700/60 mb-2.5 leading-relaxed font-sans">
                 {activeMarkFeedback.pesan || 'Tidak ada catatan tertulis'}
               </p>
@@ -3784,15 +4121,24 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                   onClick={() => {
                     setIsEditingFeedback(true);
                     setEditingFeedbackText(activeMarkFeedback.pesan);
+                    const initialTags = activeMarkFeedback.tag
+                      ? activeMarkFeedback.tag.split(/[\s,]+/).filter(Boolean)
+                      : [];
+                    if (initialTags.length === 0) {
+                      const opt = TEACHER_FEEDBACK_OPTIONS.find((o) => activeMarkFeedback.pesan.includes(o.tag));
+                      if (opt) initialTags.push(opt.id);
+                    }
+                    setEditingFeedbackTags(initialTags);
+                    setEditSlashOpen(false);
                   }}
-                  className="editorial-btn bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 text-[11px] py-1 px-2.5 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg border border-stone-200 dark:border-stone-700"
+                  className="editorial-btn bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 text-[11px] py-1 px-2.5 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg border border-stone-200 dark:border-stone-700 font-medium"
                 >
                   <Edit2 size={12} /> Edit Catatan
                 </button>
                 <button
                   type="button"
                   onClick={removeActiveMark}
-                  className="editorial-btn bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/60 dark:text-red-300 text-[11px] py-1 px-2.5 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg border border-red-200 dark:border-red-800"
+                  className="editorial-btn bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/60 dark:text-red-300 text-[11px] py-1 px-2.5 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg border border-red-200 dark:border-red-800 font-medium"
                 >
                   <Trash2 size={12} /> Hapus
                 </button>
@@ -3800,29 +4146,108 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             </div>
           ) : (
             <div className="relative z-10 flex flex-col gap-2">
-              <textarea
-                value={editingFeedbackText}
-                onChange={(e) => setEditingFeedbackText(e.target.value)}
-                placeholder="Tulis catatan perbaikan untuk siswa..."
-                rows={2}
-                autoFocus
-                className="editorial-input w-full p-2 text-xs bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 border border-stone-300 dark:border-stone-700 rounded-xl focus:ring-1 focus:ring-amber-500 font-sans"
-              />
-              <div className="flex items-center justify-end gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingFeedback(false)}
-                  className="editorial-btn bg-stone-100 hover:bg-stone-200 text-stone-600 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-400 text-[11px] py-1 px-2.5 cursor-pointer rounded-lg"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEditedFeedback}
-                  className="editorial-btn bg-amber-600 hover:bg-amber-700 text-white text-[11px] py-1 px-3 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg"
-                >
-                  <Check size={12} /> Simpan
-                </button>
+              {/* Category Pills Selector */}
+              <div>
+                <span className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider block mb-1">
+                  Kategori Rubrik:
+                </span>
+                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-0.5 custom-scrollbar">
+                  {TEACHER_FEEDBACK_OPTIONS.map((opt) => {
+                    const isSelected = editingFeedbackTags.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleSelectEditTag(opt)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer border ${
+                          isSelected
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs font-bold'
+                            : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                        }`}
+                        title={opt.label}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Textarea Catatan */}
+              <div className="relative">
+                <textarea
+                  ref={editFeedbackTextareaRef}
+                  value={editingFeedbackText}
+                  onChange={(e) => handleEditFeedbackChange(e.target.value)}
+                  onKeyDown={handleEditKeyDown}
+                  placeholder="Tulis catatan (Ketik / untuk cari aspek rubrik)..."
+                  rows={2}
+                  autoFocus
+                  className="editorial-input w-full p-2 text-xs bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 border border-stone-300 dark:border-stone-700 rounded-xl focus:ring-1 focus:ring-amber-500 font-sans"
+                />
+
+                {/* Dropdown Menu Slash Command (/) saat edit */}
+                {editSlashOpen && (
+                  <div
+                    ref={editSlashDropdownRef}
+                    className="absolute left-0 bottom-full mb-1 w-full max-h-44 overflow-y-auto bg-white dark:bg-stone-900 border border-amber-300 dark:border-amber-600 rounded-xl shadow-xl z-50 p-1 custom-scrollbar animate-in fade-in"
+                  >
+                    <div className="px-2 py-1 text-[10px] font-bold text-amber-800 dark:text-amber-300 border-b border-stone-100 dark:border-stone-800 flex justify-between items-center">
+                      <span>Pilih Kategori Rubrik</span>
+                      <span className="font-normal text-stone-400">↑↓ Navigasi • Enter Pilih</span>
+                    </div>
+                    {filteredEditOptions.length === 0 ? (
+                      <div className="p-2 text-[11px] text-stone-400 text-center italic">
+                        Kategori tidak ditemukan
+                      </div>
+                    ) : (
+                      filteredEditOptions.map((opt, idx) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleInsertEditOption(opt)}
+                          onMouseEnter={() => setEditSlashSelectedIndex(idx)}
+                          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                            idx === editSlashSelectedIndex
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 font-semibold'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="truncate">
+                            <span className="font-bold mr-1.5">{opt.tag}</span>
+                            <span className="text-[11px] text-stone-500 dark:text-stone-400">{opt.label}</span>
+                          </div>
+                          <span className="text-[10px] text-stone-400 font-mono shrink-0">Enter</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-stone-400">
+                  Ketik <kbd className="px-1 py-0.5 bg-stone-100 dark:bg-stone-800 rounded border border-stone-300 dark:border-stone-700 font-mono">/</kbd> untuk rubrik
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingFeedback(false);
+                      setEditSlashOpen(false);
+                    }}
+                    className="editorial-btn bg-stone-100 hover:bg-stone-200 text-stone-600 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-400 text-[11px] py-1 px-2.5 cursor-pointer rounded-lg"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEditedFeedback}
+                    className="editorial-btn bg-amber-600 hover:bg-amber-700 text-white text-[11px] py-1 px-3 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg font-semibold"
+                  >
+                    <Check size={12} /> Simpan
+                  </button>
+                </div>
               </div>
             </div>
           )}

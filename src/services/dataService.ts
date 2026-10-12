@@ -75,6 +75,14 @@ function mapDokumenRow(row: Record<string, unknown>): Dokumen {
       parsedPenilaian = typeof row.penilaian === 'string' ? JSON.parse(row.penilaian) : (row.penilaian as PenilaianRubrik);
     } catch {}
   }
+  if (!parsedPenilaian && typeof window !== 'undefined') {
+    try {
+      const local = getLocalDB();
+      if (local.dokumen?.[String(row.id)]?.penilaian) {
+        parsedPenilaian = local.dokumen[String(row.id)].penilaian;
+      }
+    } catch {}
+  }
 
   // Resolusi Nama Kelas: Hindari ekspos kode kelas, cari nama kelas jika belum ada di row
   let resolvedNamaKelas = (row.nama_kelas as string) || (row.kelas as string) || undefined;
@@ -157,18 +165,6 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
   };
   if (!teks) return counts;
 
-  // 1. Ekstrak data-tag="..." dari mark HTML (mendukung single atau multiple tag seperti "kapital,tanda_baca")
-  const tagMatches = teks.matchAll(/data-tag=["']([^"']+)["']/g);
-  for (const match of tagMatches) {
-    const rawTags = match[1].split(/[\s,]+/);
-    for (const tag of rawTags) {
-      if (counts[tag] !== undefined) {
-        counts[tag]++;
-      }
-    }
-  }
-
-  // 2. Ekstrak tag badge text seperti [Huruf Kapital], [Pembentukan Kata], dll
   const badgeMap: Record<string, string> = {
     'huruf kapital': 'kapital',
     'kapital': 'kapital',
@@ -189,7 +185,46 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
     'struktur': 'struktur',
   };
 
-  const badgeMatches = teks.matchAll(/\[(.*?)\]/g);
+  // 1. Ekstrak dari seluruh tag <mark ...> (Prioritas utama: atribut data-tag)
+  const markRegex = /<mark\b([^>]*)>/gi;
+  let markMatch: RegExpExecArray | null;
+
+  while ((markMatch = markRegex.exec(teks)) !== null) {
+    const attrs = markMatch[1];
+    let countedFromDataTag = false;
+
+    // Prioritas 1: Atribut data-tag
+    const tagAttrMatch = attrs.match(/data-tag=["']([^"']+)["']/i);
+    if (tagAttrMatch) {
+      const rawTags = tagAttrMatch[1].split(/[\s,]+/);
+      for (const tag of rawTags) {
+        if (counts[tag] !== undefined) {
+          counts[tag]++;
+          countedFromDataTag = true;
+        }
+      }
+    }
+
+    // Prioritas 2: Fallback ke badge dalam atribut data-pesan jika data-tag belum terisi
+    if (!countedFromDataTag) {
+      const pesanAttrMatch = attrs.match(/data-pesan=["']([^"']+)["']/i);
+      if (pesanAttrMatch) {
+        const pesan = pesanAttrMatch[1];
+        const badgeInPesan = pesan.matchAll(/\[(.*?)\]/g);
+        for (const b of badgeInPesan) {
+          const key = b[1].toLowerCase().trim();
+          const mapped = badgeMap[key];
+          if (mapped && counts[mapped] !== undefined) {
+            counts[mapped]++;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Ekstrak tag badge text seperti [Huruf Kapital] yang berada di luar elemen <mark>
+  const textWithoutMarks = teks.replace(/<mark\b[^>]*>[\s\S]*?<\/mark>/gi, '');
+  const badgeMatches = textWithoutMarks.matchAll(/\[(.*?)\]/g);
   for (const match of badgeMatches) {
     const key = match[1].toLowerCase().trim();
     const mapped = badgeMap[key];
@@ -2104,20 +2139,8 @@ export const DataService = {
   },
 
   async simpanPenilaian(id: string, penilaian: PenilaianRubrik, markSelesai = true) {
-    if (isSupabaseConfigured) {
-      const payload: Record<string, unknown> = {
-        penilaian: JSON.stringify(penilaian),
-        feedback_umum: penilaian.catatanGuru || undefined,
-      };
-      if (markSelesai) {
-        payload.status = 'Selesai';
-      }
-      try {
-        await supabase.from('dokumen').update(payload).eq('id', id);
-      } catch (err) {
-        console.error('Error simpanPenilaian di Supabase:', err);
-      }
-    }
+    if (!id) return;
+    const waktu = getWaktuSekarang();
 
     const local = getLocalDB();
     if (local.dokumen[id]) {
@@ -2128,7 +2151,49 @@ export const DataService = {
       if (markSelesai) {
         local.dokumen[id].status = 'Selesai';
       }
+      local.dokumen[id].waktuEdit = waktu;
       saveLocalDB(local);
+    }
+
+    if (isSupabaseConfigured) {
+      const payload: Record<string, unknown> = {
+        feedback_umum: penilaian.catatanGuru || undefined,
+        waktu_edit: waktu,
+      };
+      if (markSelesai) {
+        payload.status = 'Selesai';
+      }
+
+      // 1. Coba update kolom penilaian langsung di dokumen
+      const fullPayload = {
+        ...payload,
+        penilaian: JSON.stringify(penilaian),
+      };
+
+      const res = await supabase.from('dokumen').update(fullPayload).eq('id', id);
+      if (res.error) {
+        const errMsg = res.error.message || '';
+        // Jika kolom penilaian belum ada di tabel dokumen Supabase:
+        if (errMsg.toLowerCase().includes('penilaian')) {
+          await supabase.from('dokumen').update(payload).eq('id', id);
+          try {
+            await supabase.from('pengaturan').upsert({
+              key: `penilaian_${id}`,
+              val: JSON.stringify(penilaian),
+            });
+          } catch (e) {
+            console.warn('Gagal simpan fallback penilaian ke pengaturan:', e);
+          }
+        }
+      } else {
+        // Berhasil update langsung, tetap simpan cadangan di tabel pengaturan
+        try {
+          await supabase.from('pengaturan').upsert({
+            key: `penilaian_${id}`,
+            val: JSON.stringify(penilaian),
+          });
+        } catch {}
+      }
     }
   },
 
@@ -2574,6 +2639,22 @@ export const DataService = {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('nulislur_db_change'));
     }
+  },
+
+  async getDokumen(): Promise<Record<string, Dokumen>> {
+    if (isSupabaseConfigured) {
+      const { data } = await supabase.from('dokumen').select('*');
+      const map: Record<string, Dokumen> = {};
+      if (data) {
+        data.forEach((row) => {
+          const doc = mapDokumenRow(row);
+          map[doc.id] = doc;
+        });
+      }
+      return map;
+    }
+    const local = getLocalDB();
+    return { ...local.dokumen };
   },
 
   // 8. Unified Real-Time Listeners

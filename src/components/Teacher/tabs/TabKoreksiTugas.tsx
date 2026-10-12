@@ -58,6 +58,7 @@ interface TabKoreksiTugasProps {
   onTandaiSelesai: (izinPublikasi: boolean) => Promise<void>;
   penugasanList?: Penugasan[];
   onOpenNewPenugasanModal?: () => void;
+  onDokumenUpdated?: () => void;
 }
 
 // Template Saran Catatan Guru
@@ -81,6 +82,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   onTandaiSelesai,
   penugasanList = [],
   onOpenNewPenugasanModal,
+  onDokumenUpdated,
 }) => {
   // Layout Controls
   const [isQueueCollapsed, setIsQueueCollapsed] = useState<boolean>(false);
@@ -136,14 +138,22 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
     };
   }, []);
 
-  // Auto-save umpan balik guru dengan debounce 500ms (Hanya simpan isi catatan, tidak mendegradasi status naskah)
+  // Auto-save umpan balik guru dengan debounce 500ms (Catatan dan nilai otomatis melekat)
   const handleCatatanChange = (val: string) => {
     setCatatanUmum(val);
-    if (!selectedDocId) return;
+    if (!selectedDocId || !selectedDoc) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(async () => {
       try {
         await DataService.simpanFeedbackUmum(selectedDocId, val);
+        const tags = parseDocumentTagCounts(selectedDoc.teks);
+        const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, val);
+        await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
+        if (dokumenMap[selectedDocId]) {
+          dokumenMap[selectedDocId].feedbackUmum = val;
+          dokumenMap[selectedDocId].penilaian = autoPenilaian;
+        }
+        if (onDokumenUpdated) onDokumenUpdated();
         setCatatanSavedNotice(true);
         setTimeout(() => setCatatanSavedNotice(false), 2500);
       } catch (err) {
@@ -152,22 +162,26 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
     }, 500);
   };
 
-  // Handler Minta Revisi Siswa: Menyimpan Nilai Sementara (Provisional Score) + Catatan Bimbingan
+  // Handler Kembalikan ke Siswa untuk Revisi (Nilai dan Catatan Melekat)
   const handleMintaRevisi = async () => {
     if (!selectedDocId || !selectedDoc) return;
     try {
       const tags = parseDocumentTagCounts(selectedDoc.teks);
       const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
-      // Simpan penilaian sementara tanpa menandai selesai (status tetap 'Draf')
       await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
       if (catatanUmum.trim()) {
         await DataService.simpanFeedbackUmum(selectedDocId, catatanUmum.trim());
       }
       await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
-      alert('Catatan koreksi & nilai sementara berhasil dikirim ke siswa untuk direvisi!');
+      if (dokumenMap[selectedDocId]) {
+        dokumenMap[selectedDocId].status = 'Draf';
+        dokumenMap[selectedDocId].penilaian = autoPenilaian;
+      }
+      if (onDokumenUpdated) onDokumenUpdated();
+      alert('Naskah telah dikembalikan ke siswa untuk perbaikan. Nilai dan catatan bimbingan tetap melekat.');
     } catch (err: any) {
       console.error('Gagal meminta revisi siswa:', err);
-      alert('Gagal mengirim permintaan revisi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+      alert('Gagal mengembalikan status naskah: ' + (err?.message || 'Terjadi kesalahan sistem'));
     }
   };
 
@@ -855,6 +869,14 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                     onUpdate={async (html) => {
                       if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                       await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
+                      const tags = parseDocumentTagCounts(html);
+                      const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
+                      await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
+                      if (dokumenMap[selectedDocId]) {
+                        dokumenMap[selectedDocId].teks = html;
+                        dokumenMap[selectedDocId].penilaian = autoPenilaian;
+                      }
+                      if (onDokumenUpdated) onDokumenUpdated();
                     }}
                   />
                 </div>
@@ -1074,14 +1096,14 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       <Sparkles size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
                       <span>
                         {selectedDoc.penilaian 
-                          ? `Sedang direvisi siswa (Nilai Sementara: ${selectedDoc.penilaian.skorTotal}/100 - ${selectedDoc.penilaian.predikat}).` 
-                          : 'Sedang dikerjakan siswa. Bimbingan Anda otomatis tampil di lobi siswa.'}
+                          ? `Sedang direvisi siswa (Nilai Sementara: ${selectedDoc.penilaian.skorTotal}/100 - ${selectedDoc.penilaian.predikat}). Nilai & catatan melekat otomatis.` 
+                          : 'Sedang dikerjakan siswa. Bimbingan & nilai Anda otomatis melekat dan tampil di lobi siswa.'}
                       </span>
                     </div>
                     <button
                       onClick={() => onTandaiSelesai(false)}
                       className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 dark:hover:bg-stone-200 text-[11px] py-1.5 cursor-pointer justify-center shadow-xs"
-                      title="Selesaikan bimbingan dan tandai naskah sebagai selesai"
+                      title="Selesaikan bimbingan dan kunci naskah sebagai selesai"
                     >
                       <Check size={13} /> Tandai Selesai Langsung
                     </button>
@@ -1109,9 +1131,9 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                     <button
                       onClick={handleMintaRevisi}
                       className="editorial-btn w-full bg-amber-600 hover:bg-amber-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center font-semibold"
-                      title="Kirim catatan evaluasi & nilai sementara agar diperbaiki siswa"
+                      title="Kembalikan naskah ke siswa untuk perbaikan lanjutan. Nilai dan catatan bimbingan tetap melekat."
                     >
-                      <RotateCcw size={12} /> Kirim Hasil Koreksi & Minta Revisi
+                      <RotateCcw size={12} /> Kembalikan ke Siswa untuk Revisi
                     </button>
                   </div>
                 )}
@@ -1224,9 +1246,20 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 onUpdate={async (html) => {
                   if (!html || html === '<p></p>' || html === '<p><br></p>') return;
                   await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
+                  const tags = parseDocumentTagCounts(html);
+                  const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
+                  await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
+                  if (dokumenMap[selectedDocId]) {
+                    dokumenMap[selectedDocId].teks = html;
+                    dokumenMap[selectedDocId].penilaian = autoPenilaian;
+                  }
                   if (selectedDoc.status === 'Terkumpul') {
                     await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
+                    if (dokumenMap[selectedDocId]) {
+                      dokumenMap[selectedDocId].status = 'Draf';
+                    }
                   }
+                  if (onDokumenUpdated) onDokumenUpdated();
                 }}
               />
             </div>
