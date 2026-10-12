@@ -18,18 +18,17 @@ import {
 import confetti from 'canvas-confetti';
 
 interface TeacherEditorViewProps {
-  docId?: string; // Jika kosong/undefined, mode buat tulisan baru
+  docId: string;
   user: UserAccount;
   onBack: () => void;
 }
 
 export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
-  docId: initialDocId,
+  docId,
   user,
   onBack,
 }) => {
-  const [currentDocId, setCurrentDocId] = useState<string | null>(initialDocId || null);
-  const [_doc, setDoc] = useState<Dokumen | null>(null);
+  const [doc, setDoc] = useState<Dokumen | null>(null);
   const [judul, setJudul] = useState<string>('');
   const [topik, setTopik] = useState<string>('Artikel');
   const [teks, setTeks] = useState<string>('');
@@ -54,12 +53,21 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     }, 3000);
   };
 
-  // 1. Listen single doc jika currentDocId ada
+  // 1. Listen dokumen yang sedang diedit
   useEffect(() => {
-    if (!currentDocId) return;
+    if (!docId) return;
 
-    const unsub = DataService.listenDokumenSingle(currentDocId, (data) => {
+    const unsub = DataService.listenDokumenSingle(docId, (data) => {
       if (!data) return;
+
+      // KEAMANAN RELASIONAL KETAT: Guru HANYA boleh mengedit karya kategori Guru miliknya sendiri.
+      // Dilarang keras mengedit karya siswa!
+      if (data.penulisKategori !== 'Guru' || (data.username && data.username !== user.username)) {
+        alert('Akses Ditolak: Anda tidak memiliki hak untuk mengedit naskah ini.');
+        onBack();
+        return;
+      }
+
       setDoc(data);
 
       const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
@@ -80,8 +88,8 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
 
       DataService.updateAktivitas(
         user.username,
-        `Menulis: ${data.judul || 'Tulisan Guru'}`,
-        currentDocId
+        `Menulis: ${data.judul || 'Naskah'}`,
+        docId
       );
     });
 
@@ -89,31 +97,9 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
       unsub();
       DataService.updateAktivitas(user.username, 'Beranda', null);
     };
-  }, [currentDocId, user.username]);
+  }, [docId, user.username, onBack]);
 
-  // Helper untuk memastikan dokumen sudah terbuat di DB sebelum disimpan
-  const ensureDocCreated = async (customJudul?: string, customTopik?: string, customTeks?: string): Promise<string> => {
-    if (currentDocId) return currentDocId;
-
-    const finalJudul = (customJudul ?? judul).trim() || 'Tulisan Guru';
-    const finalTopik = customTopik ?? topik ?? 'Artikel';
-    const finalTeks = customTeks ?? teks ?? '<p></p>';
-
-    const newId = await DataService.buatDokumenBaru(
-      user.nama || 'Guru',
-      user.username,
-      'Guru',
-      finalJudul,
-      'Guru',
-      finalTopik
-    );
-
-    setCurrentDocId(newId);
-    await DataService.simpanDokumen(newId, finalJudul, finalTeks, finalTopik);
-    return newId;
-  };
-
-  // Debounced title update
+  // Debounced title update (Tanpa fallback dummy 'Tulisan Guru', simpan persis apa adanya yang diketik)
   const handleTitleChange = (newTitle: string) => {
     if (newTitle.length > 120) return;
     lastLocalJudulRef.current = newTitle;
@@ -124,8 +110,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     titleTimerRef.current = setTimeout(async () => {
       try {
-        const id = await ensureDocCreated(newTitle);
-        await DataService.simpanDokumen(id, newTitle, teks, topik);
+        await DataService.simpanDokumen(docId, newTitle, teks, topik);
         setSaveStatus('saved');
       } catch (err) {
         console.warn('Gagal auto-save judul:', err);
@@ -143,8 +128,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
-        const id = await ensureDocCreated(undefined, undefined, html);
-        await DataService.simpanDokumen(id, judul.trim() || 'Tulisan Guru', html, topik);
+        await DataService.simpanDokumen(docId, judul, html, topik);
         setSaveStatus('saved');
       } catch (err) {
         console.warn('Gagal auto-save teks:', err);
@@ -157,8 +141,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     setTopik(newTopik);
     setSaveStatus('saving');
     try {
-      const id = await ensureDocCreated(undefined, newTopik);
-      await DataService.simpanDokumen(id, judul.trim() || 'Tulisan Guru', teks, newTopik);
+      await DataService.simpanDokumen(docId, judul, teks, newTopik);
       setSaveStatus('saved');
       showToast(`Kategori diubah menjadi ${newTopik}`);
     } catch (err) {
@@ -169,8 +152,8 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
   // Layout mode change
   const handleLayoutChange = async (mode: 'web' | 'kertas') => {
     setLayoutMode(mode);
-    if (currentDocId) {
-      await DataService.updateLayoutModeDokumen(currentDocId, mode);
+    if (docId) {
+      await DataService.updateLayoutModeDokumen(docId, mode);
     }
   };
 
@@ -179,8 +162,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     setIsSaving(true);
     setSaveStatus('saving');
     try {
-      const id = await ensureDocCreated();
-      await DataService.simpanDokumen(id, judul.trim() || 'Tulisan Guru', teks, topik);
+      await DataService.simpanDokumen(docId, judul, teks, topik);
       setSaveStatus('saved');
       showToast('Draf tulisan berhasil disimpan!');
     } catch (err: any) {
@@ -192,19 +174,17 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
 
   // Toggle publish to Mading / Pojok Baca
   const handlePublishToggle = async () => {
-    if (!judul.trim() || !teks.trim() || teks === '<p></p>') {
-      alert('Lengkapi judul dan isi tulisan terlebih dahulu sebelum menerbitkan!');
+    if (!judul.trim()) {
+      alert('Isi judul tulisan terlebih dahulu sebelum menerbitkan!');
       return;
     }
 
     setIsSaving(true);
     try {
-      const id = await ensureDocCreated();
-      await DataService.simpanDokumen(id, judul.trim(), teks, topik);
+      await DataService.simpanDokumen(docId, judul.trim(), teks, topik);
 
       if (!isPublic) {
-        // Terbitkan
-        await DataService.publikasiKeMading(id, topik, user.nama || 'Guru');
+        await DataService.publikasiKeMading(docId, topik, user.nama || 'Guru');
         setIsPublic(true);
         confetti({
           particleCount: 80,
@@ -213,10 +193,9 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
         });
         showToast('Karya berhasil diterbitkan di Pojok Baca Sekolah! ✨');
       } else {
-        // Tarik kembali jadi draf
-        await DataService.takeDownMading(id);
+        await DataService.takeDownMading(docId);
         setIsPublic(false);
-        showToast('Karya telah ditarik dari publik dan kembali menjadi draf privat.');
+        showToast('Karya telah ditarik dari publik dan kembali menjadi draf.');
       }
     } catch (err: any) {
       alert('Gagal mengubah status publikasi: ' + (err?.message || 'Terjadi kesalahan'));
@@ -228,7 +207,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
   // Export handlers
   const handleDownloadPdf = () => {
     exportToPdf({
-      title: judul || 'Tulisan Guru',
+      title: judul || doc?.judul || 'Tulisan Guru',
       author: user.nama || user.username,
       className: 'Ruang Guru',
       htmlContent: teks,
@@ -237,7 +216,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
 
   const handleDownloadWord = () => {
     exportToWord({
-      title: judul || 'Tulisan Guru',
+      title: judul || doc?.judul || 'Tulisan Guru',
       author: user.nama || user.username,
       className: 'Ruang Guru',
       htmlContent: teks,
@@ -329,20 +308,20 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
 
           {/* Lembar Tulis Naskah */}
           <div className="editorial-card bg-white dark:bg-[#141416] p-6 sm:p-10 lg:p-12 pt-10 sm:pt-14 lg:pt-16 shadow-xs border border-stone-200/90 dark:border-stone-800 rounded-2xl min-h-[75vh]">
-            {/* Judul Tulisan: Format Elegan Besar */}
+            {/* Judul Tulisan: Format Sama Persis Seperti Siswa */}
             <div className="pt-2 sm:pt-4 pb-6 sm:pb-7 mb-6 sm:mb-8 border-b border-stone-200/80 dark:border-stone-800/80">
               <input
                 type="text"
                 value={judul}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Judul tulisan atau materi guru..."
+                placeholder="Judul"
                 spellCheck={false}
                 lang="id"
                 className="w-full text-2xl sm:text-4xl lg:text-[40px] font-bold font-serif-literary text-stone-900 dark:text-stone-100 border-0 p-0 focus:outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 bg-transparent leading-snug tracking-tight"
               />
             </div>
 
-            {/* Tiptap Rich-Text Editor (Full Features: Heading, Quote, Format, Word/Char Counter, Layout Mode) */}
+            {/* Tiptap Rich-Text Editor: Placeholder sama seperti siswa */}
             <NulisEditor
               initialContent={teks}
               initialLayoutMode={layoutMode}
@@ -351,7 +330,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
               isTeacher={false}
               blockCopyPaste={false}
               onUpdate={handleEditorUpdate}
-              placeholder="Tuliskan materi, panduan, apresiasi, atau refleksi inspiratif Anda di sini..."
+              placeholder="Tulis di sini..."
             />
           </div>
 

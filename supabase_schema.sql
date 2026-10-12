@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS public.dokumen (
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS tugas_id TEXT;
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS judul_tugas TEXT;
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS layout_mode TEXT DEFAULT 'kertas';
+ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS penulis_kategori TEXT DEFAULT 'Siswa';
 
 -- 4. TABEL PENUGASAN (TUGAS TERSTRUKTUR DARI GURU)
 CREATE TABLE IF NOT EXISTS public.penugasan (
@@ -139,6 +140,7 @@ ON CONFLICT (key) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_dokumen_username ON public.dokumen (username);
 CREATE INDEX IF NOT EXISTS idx_dokumen_kode_kelas ON public.dokumen (kode_kelas);
 CREATE INDEX IF NOT EXISTS idx_dokumen_status ON public.dokumen (status);
+CREATE INDEX IF NOT EXISTS idx_dokumen_penulis_kategori ON public.dokumen (penulis_kategori);
 CREATE INDEX IF NOT EXISTS idx_users_kode_kelas ON public.users (kode_kelas);
 CREATE INDEX IF NOT EXISTS idx_penugasan_kode_kelas ON public.penugasan (kode_kelas);
 CREATE INDEX IF NOT EXISTS idx_komentar_doc_id ON public.komentar (doc_id);

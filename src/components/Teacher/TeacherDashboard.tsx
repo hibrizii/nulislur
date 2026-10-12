@@ -36,7 +36,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
   const [activeTab, setActiveTab] = useState<TeacherTab>('pantauan');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
-  const [activeEditorDocId, setActiveEditorDocId] = useState<string | 'new' | null>(null);
+  const [activeEditorDocId, setActiveEditorDocId] = useState<string | null>(null);
 
   // Real-time State
   const [liveMap, setLiveMap] = useState<Record<string, LiveStatus>>({});
@@ -466,7 +466,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
   if (activeEditorDocId) {
     return (
       <TeacherEditorView
-        docId={activeEditorDocId === 'new' ? undefined : activeEditorDocId}
+        docId={activeEditorDocId}
         user={user}
         onBack={() => setActiveEditorDocId(null)}
       />
@@ -560,7 +560,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
               onTandaiSelesai={handleTandaiSelesai}
               penugasanList={penugasanList}
               onOpenNewPenugasanModal={() => setIsPenugasanModalOpen(true)}
-              onOpenFullEditor={(id) => setActiveEditorDocId(id)}
             />
           )}
 
@@ -632,7 +631,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
             <TabTulisanGuru
               user={user}
               dokumenMap={dokumenMap}
-              onOpenEditor={(id) => setActiveEditorDocId(id || 'new')}
+              onOpenEditor={(id) => setActiveEditorDocId(id)}
             />
           )}
 

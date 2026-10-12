@@ -313,7 +313,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       const madingDocs: Dokumen[] = [];
 
       Object.values(docs).forEach((d) => {
-        if ((d.username === username || d.nama === nama) && d.penulisKategori !== 'Guru') {
+        const isAuthor = d.username ? d.username === username : d.nama === nama;
+        if (isAuthor && d.penulisKategori !== 'Guru') {
           myDocs.push(d);
         }
 

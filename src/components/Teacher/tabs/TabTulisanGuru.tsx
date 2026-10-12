@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PenTool, Plus, Edit2, Trash2 } from 'lucide-react';
 import type { Dokumen, UserAccount } from '../../../types';
 import { DataService, getWarnaTopik } from '../../../services/dataService';
@@ -6,18 +6,40 @@ import { DataService, getWarnaTopik } from '../../../services/dataService';
 interface TabTulisanGuruProps {
   user: UserAccount;
   dokumenMap: Record<string, Dokumen>;
-  onOpenEditor: (docId?: string) => void;
+  onOpenEditor: (docId: string) => void;
 }
 
 export const TabTulisanGuru: React.FC<TabTulisanGuruProps> = ({
-  user: _user,
+  user,
   dokumenMap,
   onOpenEditor,
 }) => {
+  const [isCreating, setIsCreating] = useState(false);
   const teacherDocs = Object.values(dokumenMap).filter((d) => d.penulisKategori === 'Guru');
 
+  const handleBuatTulisanBaru = async () => {
+    if (isCreating) return;
+    setIsCreating(true);
+    try {
+      const newId = await DataService.buatDokumenBaru(
+        user.nama || user.username,
+        user.username,
+        'Umum',
+        '',
+        'Guru',
+        'Artikel'
+      );
+      onOpenEditor(newId);
+    } catch (err: any) {
+      console.error('Gagal membuat naskah baru:', err);
+      alert('Gagal membuat naskah baru: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const handleHapus = async (id: string, judul: string) => {
-    if (confirm(`Hapus tulisan "${judul}"? Tindakan ini tidak dapat dibatalkan.`)) {
+    if (confirm(`Hapus tulisan "${judul || 'Tanpa Judul'}"? Tindakan ini tidak dapat dibatalkan.`)) {
       await DataService.hapusDokumen(id);
     }
   };
@@ -38,10 +60,11 @@ export const TabTulisanGuru: React.FC<TabTulisanGuruProps> = ({
 
         <button
           type="button"
-          onClick={() => onOpenEditor()}
-          className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 dark:hover:bg-stone-200 py-1.5 px-3.5 text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1.5 rounded-xl"
+          disabled={isCreating}
+          onClick={handleBuatTulisanBaru}
+          className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 dark:hover:bg-stone-200 py-1.5 px-3.5 text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1.5 rounded-xl disabled:opacity-50"
         >
-          <Plus size={14} /> <span>Buat Tulisan Baru</span>
+          <Plus size={14} /> <span>{isCreating ? 'Mempersiapkan...' : 'Buat Tulisan Baru'}</span>
         </button>
       </div>
 
@@ -58,10 +81,11 @@ export const TabTulisanGuru: React.FC<TabTulisanGuruProps> = ({
             </p>
             <button
               type="button"
-              onClick={() => onOpenEditor()}
-              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 py-2 px-3.5 text-xs font-semibold cursor-pointer shadow-xs"
+              disabled={isCreating}
+              onClick={handleBuatTulisanBaru}
+              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 py-2 px-3.5 text-xs font-semibold cursor-pointer shadow-xs disabled:opacity-50"
             >
-              + Tulis Sekarang
+              + {isCreating ? 'Mempersiapkan...' : 'Tulis Sekarang'}
             </button>
           </div>
         ) : (
