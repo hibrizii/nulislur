@@ -29,9 +29,23 @@ import { NulisEditor } from '../../Editor/NulisEditor';
 import { 
   DataService, 
   stringToColor, 
-  parseDocumentTagCounts
+  parseDocumentTagCounts,
+  hitungPenilaianOtomatis
 } from '../../../services/dataService';
 import { exportToPdf, exportToWord, cleanSnippet } from '../../../utils/exportDocument';
+
+// Helper Klasifikasi Status Antrean Pedagogis
+export function getDocQueueCategory(d: Dokumen): 'terkumpul' | 'revisi' | 'selesai' | 'draf' {
+  if (d.status === 'Selesai' || d.isPublic) return 'selesai';
+  if (d.status === 'Terkumpul') return 'terkumpul';
+  const hasFeedback = Boolean(d.feedbackUmum && d.feedbackUmum.trim().length > 0);
+  const hasMarks = d.teks && d.teks.includes('<mark');
+  const hasPenilaian = Boolean(d.penilaian);
+  if (d.status === 'Draf' && (hasFeedback || hasMarks || hasPenilaian)) {
+    return 'revisi';
+  }
+  return 'draf';
+}
 
 interface TabKoreksiTugasProps {
   students: UserAccount[];
@@ -74,8 +88,8 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   const [activeInspectorTab, setActiveInspectorTab] = useState<'catatan' | 'info'>('catatan');
   // Filter Penugasan: 'semua' | 'mandiri' | idPenugasan
   const [selectedTugasFilter, setSelectedTugasFilter] = useState<string>('semua');
-  // Filter Status Antrean: Semua, Terkumpul, Draf Siswa, Selesai, Belum Mulai
-  const [queueStatusFilter, setQueueStatusFilter] = useState<'semua' | 'terkumpul' | 'draf' | 'selesai' | 'belum_mulai'>('semua');
+  // Filter Status Antrean: Semua, Terkumpul, Revisi, Selesai, Draf Siswa, Belum Mulai
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'semua' | 'terkumpul' | 'revisi' | 'selesai' | 'draf' | 'belum_mulai'>('semua');
   const [queueSearch, setQueueSearch] = useState<string>('');
 
   // Mode Fokus (Zen Mode)
@@ -122,7 +136,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
     };
   }, []);
 
-  // Auto-save umpan balik guru dengan debounce 500ms
+  // Auto-save umpan balik guru dengan debounce 500ms (Hanya simpan isi catatan, tidak mendegradasi status naskah)
   const handleCatatanChange = (val: string) => {
     setCatatanUmum(val);
     if (!selectedDocId) return;
@@ -130,15 +144,31 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
     autoSaveTimerRef.current = setTimeout(async () => {
       try {
         await DataService.simpanFeedbackUmum(selectedDocId, val);
-        if (selectedDoc && selectedDoc.status === 'Terkumpul' && val.trim().length > 0) {
-          await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
-        }
         setCatatanSavedNotice(true);
         setTimeout(() => setCatatanSavedNotice(false), 2500);
       } catch (err) {
         console.error('Gagal auto-save catatan guru:', err);
       }
     }, 500);
+  };
+
+  // Handler Minta Revisi Siswa: Menyimpan Nilai Sementara (Provisional Score) + Catatan Bimbingan
+  const handleMintaRevisi = async () => {
+    if (!selectedDocId || !selectedDoc) return;
+    try {
+      const tags = parseDocumentTagCounts(selectedDoc.teks);
+      const autoPenilaian = hitungPenilaianOtomatis(selectedDoc, tags, catatanUmum);
+      // Simpan penilaian sementara tanpa menandai selesai (status tetap 'Draf')
+      await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
+      if (catatanUmum.trim()) {
+        await DataService.simpanFeedbackUmum(selectedDocId, catatanUmum.trim());
+      }
+      await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
+      alert('Catatan koreksi & nilai sementara berhasil dikirim ke siswa untuk direvisi!');
+    } catch (err: any) {
+      console.error('Gagal meminta revisi siswa:', err);
+      alert('Gagal mengirim permintaan revisi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    }
   };
 
   const handleApplyTemplate = (templateText: string) => {
@@ -191,10 +221,11 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
       });
   }, [students, dokumenMap, selectedFilterClass, selectedTugasFilter]);
 
-  // Hitung jumlah counter pada masing-masing kategori antrean (berdasarkan jumlah naskah akurat)
+  // Hitung jumlah counter pada masing-masing kategori antrean (berdasarkan klasifikasi pedagogis)
   const queueCounts = useMemo(() => {
     let semua = 0;
     let terkumpul = 0;
+    let revisi = 0;
     let draf = 0;
     let selesai = 0;
     let belumMulai = 0;
@@ -205,15 +236,16 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
       } else {
         docs.forEach((d) => {
           semua++;
-          if (d.status === 'Terkumpul') terkumpul++;
-          else if (d.status === 'Draf') draf++;
-          else if (d.status === 'Selesai' || d.isPublic) selesai++;
+          const cat = getDocQueueCategory(d);
+          if (cat === 'terkumpul') terkumpul++;
+          else if (cat === 'revisi') revisi++;
+          else if (cat === 'selesai') selesai++;
           else draf++;
         });
       }
     });
 
-    return { semua, terkumpul, draf, selesai, belumMulai };
+    return { semua, terkumpul, revisi, draf, selesai, belumMulai };
   }, [taskQueueAll]);
 
   // Antrean Siswa yang difilter sesuai tab status dan pencarian (memuat seluruh matchingDocs)
@@ -222,11 +254,13 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
       .map(({ student, docs }) => {
         let matchingDocs = docs;
         if (queueStatusFilter === 'terkumpul') {
-          matchingDocs = docs.filter((d) => d.status === 'Terkumpul');
+          matchingDocs = docs.filter((d) => getDocQueueCategory(d) === 'terkumpul');
+        } else if (queueStatusFilter === 'revisi') {
+          matchingDocs = docs.filter((d) => getDocQueueCategory(d) === 'revisi');
         } else if (queueStatusFilter === 'draf') {
-          matchingDocs = docs.filter((d) => d.status === 'Draf');
+          matchingDocs = docs.filter((d) => getDocQueueCategory(d) === 'draf');
         } else if (queueStatusFilter === 'selesai') {
-          matchingDocs = docs.filter((d) => d.status === 'Selesai' || d.isPublic);
+          matchingDocs = docs.filter((d) => getDocQueueCategory(d) === 'selesai');
         } else if (queueStatusFilter === 'belum_mulai') {
           matchingDocs = [];
         }
@@ -322,17 +356,24 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
           <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-bold font-serif-literary text-stone-900 dark:text-stone-100 flex items-center gap-2 truncate">
               <span>Studio Koreksi Tugas</span>
-              {selectedDoc && (
-                <span className={`text-[10px] font-sans font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                  selectedDoc.status === 'Terkumpul'
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                    : selectedDoc.status === 'Selesai'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                    : 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
-                }`}>
-                  {selectedDoc.status}
-                </span>
-              )}
+              {selectedDoc && (() => {
+                const selCat = getDocQueueCategory(selectedDoc);
+                const selBadgeLabel = 
+                  selCat === 'terkumpul' ? 'Terkumpul' :
+                  selCat === 'revisi' ? `Revisi ${selectedDoc.penilaian ? `(${selectedDoc.penilaian.skorTotal})` : ''}` :
+                  selCat === 'selesai' ? `Selesai ${selectedDoc.penilaian ? `(${selectedDoc.penilaian.skorTotal})` : ''}` :
+                  'Draf';
+                const selBadgeColor = 
+                  selCat === 'terkumpul' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                  selCat === 'revisi' ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300' :
+                  selCat === 'selesai' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                  'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
+                return (
+                  <span className={`text-[10px] font-sans font-bold px-2 py-0.5 rounded-full shrink-0 ${selBadgeColor}`}>
+                    {selBadgeLabel}
+                  </span>
+                );
+              })()}
             </h2>
             <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
               {selectedDoc ? (
@@ -434,7 +475,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 </select>
               </div>
 
-              {/* Filter Pills: Semua, Terkumpul, Draf Siswa, Selesai, Belum Mulai */}
+              {/* Filter Pills: Semua, Terkumpul, Sedang Revisi, Selesai, Draf Mandiri, Belum Mulai */}
               <div className="grid grid-cols-2 gap-1 mb-2">
                 <button
                   type="button"
@@ -462,15 +503,15 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQueueStatusFilter('draf')}
+                  onClick={() => setQueueStatusFilter('revisi')}
                   className={`py-1 px-1.5 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer text-center truncate ${
-                    queueStatusFilter === 'draf'
+                    queueStatusFilter === 'revisi'
                       ? 'bg-amber-600 text-white shadow-2xs'
                       : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
                   }`}
-                  title="Draf tugas siswa yang sedang ditulis (Bimbingan Formatif)"
+                  title="Naskah yang telah dikoreksi guru dan sedang direvisi siswa (nilai sementara tercatat)"
                 >
-                  Draf ({queueCounts.draf})
+                  Sedang Revisi ({queueCounts.revisi})
                 </button>
                 <button
                   type="button"
@@ -486,15 +527,27 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setQueueStatusFilter('draf')}
+                  className={`py-1 px-1.5 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer text-center truncate ${
+                    queueStatusFilter === 'draf'
+                      ? 'bg-stone-700 text-white shadow-2xs'
+                      : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                  }`}
+                  title="Draf mandiri siswa yang belum pernah dikumpulkan"
+                >
+                  Draf Mandiri ({queueCounts.draf})
+                </button>
+                <button
+                  type="button"
                   onClick={() => setQueueStatusFilter('belum_mulai')}
-                  className={`col-span-2 py-1 px-1.5 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer text-center truncate ${
+                  className={`py-1 px-1.5 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer text-center truncate ${
                     queueStatusFilter === 'belum_mulai'
                       ? 'bg-stone-700 text-white shadow-2xs'
                       : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
                   }`}
                   title="Siswa yang belum membuat draf naskah sama sekali"
                 >
-                  Belum Mulai Menulis ({queueCounts.belumMulai})
+                  Belum Mulai ({queueCounts.belumMulai})
                 </button>
               </div>
 
@@ -555,6 +608,12 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   if (matchingDocs.length === 1) {
                     const doc = matchingDocs[0];
                     const isSelected = selectedDocId === doc.id;
+                    const cat = getDocQueueCategory(doc);
+                    const badgeLabel = 
+                      cat === 'terkumpul' ? 'Terkumpul' :
+                      cat === 'revisi' ? (doc.penilaian ? `Revisi (${doc.penilaian.skorTotal})` : 'Revisi') :
+                      cat === 'selesai' ? (doc.penilaian ? `Selesai (${doc.penilaian.skorTotal})` : 'Selesai') :
+                      'Draf';
                     return (
                       <button
                         key={`${student.username}-${doc.id}`}
@@ -576,15 +635,15 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                           <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                             isSelected
                               ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900'
-                              : doc.status === 'Terkumpul'
+                              : cat === 'terkumpul'
                               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                              : doc.status === 'Draf'
+                              : cat === 'revisi'
                               ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'
-                              : doc.status === 'Selesai'
+                              : cat === 'selesai'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
                           }`}>
-                            {doc.status}
+                            {badgeLabel}
                           </span>
                         </div>
 
@@ -633,6 +692,12 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       <div className="flex flex-col gap-1">
                         {matchingDocs.map((doc) => {
                           const isThisDocSelected = selectedDocId === doc.id;
+                          const mCat = getDocQueueCategory(doc);
+                          const mBadgeLabel = 
+                            mCat === 'terkumpul' ? 'Terkumpul' :
+                            mCat === 'revisi' ? (doc.penilaian ? `Revisi (${doc.penilaian.skorTotal})` : 'Revisi') :
+                            mCat === 'selesai' ? (doc.penilaian ? `Selesai (${doc.penilaian.skorTotal})` : 'Selesai') :
+                            'Draf';
                           return (
                             <button
                               key={doc.id}
@@ -656,15 +721,15 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                                 <span className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                                   isThisDocSelected
                                     ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900'
-                                    : doc.status === 'Terkumpul'
+                                    : mCat === 'terkumpul'
                                     ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                                    : doc.status === 'Draf'
+                                    : mCat === 'revisi'
                                     ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'
-                                    : doc.status === 'Selesai'
+                                    : mCat === 'selesai'
                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                     : 'bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
                                 }`}>
-                                  {doc.status}
+                                  {mBadgeLabel}
                                 </span>
                               </div>
 
@@ -700,15 +765,24 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 <div className="max-w-4xl mx-auto mb-4 bg-white dark:bg-[#141416] p-4 sm:p-5 rounded-2xl border border-stone-200/80 dark:border-stone-800 shadow-2xs">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                        selectedDoc.status === 'Terkumpul'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                          : selectedDoc.status === 'Draf'
-                          ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300'
-                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                      }`}>
-                        {selectedDoc.status === 'Draf' ? 'Draf Siswa' : selectedDoc.status}
-                      </span>
+                      {(() => {
+                        const selCat = getDocQueueCategory(selectedDoc);
+                        const selBadgeLabel = 
+                          selCat === 'terkumpul' ? 'Terkumpul (Siap Diperiksa)' :
+                          selCat === 'revisi' ? `Sedang Revisi ${selectedDoc.penilaian ? `(Nilai Sementara: ${selectedDoc.penilaian.skorTotal}/100)` : ''}` :
+                          selCat === 'selesai' ? `Selesai Dinilai ${selectedDoc.penilaian ? `(Nilai: ${selectedDoc.penilaian.skorTotal}/100)` : ''}` :
+                          'Draf Mandiri';
+                        const selBadgeColor = 
+                          selCat === 'terkumpul' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                          selCat === 'revisi' ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300' :
+                          selCat === 'selesai' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                          'bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
+                        return (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${selBadgeColor}`}>
+                            {selBadgeLabel}
+                          </span>
+                        );
+                      })()}
                       <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800/80 text-stone-600 dark:text-stone-400">
                         {totalWordCount} kata
                       </span>
@@ -780,9 +854,6 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                     }}
                     onUpdate={async (html) => {
                       await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, html);
-                      if (selectedDoc.status === 'Terkumpul') {
-                        await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
-                      }
                     }}
                   />
                 </div>
@@ -1000,7 +1071,11 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   <div className="space-y-1.5">
                     <div className="p-2 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 text-[10px] text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                       <Sparkles size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                      <span>Sedang dikerjakan siswa. Bimbingan Anda otomatis tampil di lobi siswa.</span>
+                      <span>
+                        {selectedDoc.penilaian 
+                          ? `Sedang direvisi siswa (Nilai Sementara: ${selectedDoc.penilaian.skorTotal}/100 - ${selectedDoc.penilaian.predikat}).` 
+                          : 'Sedang dikerjakan siswa. Bimbingan Anda otomatis tampil di lobi siswa.'}
+                      </span>
                     </div>
                     <button
                       onClick={() => onTandaiSelesai(false)}
@@ -1013,40 +1088,49 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 )}
 
                 {selectedDoc.status === 'Terkumpul' && (
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => onTandaiSelesai(false)}
+                        className="editorial-btn bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
+                        title="Tandai naskah telah selesai dinilai (kunci nilai akhir)"
+                      >
+                        <Check size={13} /> Selesai
+                      </button>
+                      <button
+                        onClick={() => onTandaiSelesai(true)}
+                        className="editorial-btn bg-blue-600 hover:bg-blue-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
+                        title="Selesaikan dan terbitkan langsung ke Pojok Baca Sekolah"
+                      >
+                        <Sparkles size={13} /> Terbitkan
+                      </button>
+                    </div>
                     <button
-                      onClick={() => onTandaiSelesai(false)}
-                      className="editorial-btn bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
+                      onClick={handleMintaRevisi}
+                      className="editorial-btn w-full bg-amber-600 hover:bg-amber-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center font-semibold"
+                      title="Kirim catatan evaluasi & nilai sementara agar diperbaiki siswa"
                     >
-                      <Check size={13} /> Selesai
-                    </button>
-                    <button
-                      onClick={() => onTandaiSelesai(true)}
-                      className="editorial-btn bg-blue-600 hover:bg-blue-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
-                    >
-                      <Sparkles size={13} /> Terbitkan
+                      <RotateCcw size={12} /> Kirim Hasil Koreksi & Minta Revisi
                     </button>
                   </div>
                 )}
 
                 {selectedDoc.status === 'Selesai' && !selectedDoc.isPublic && (
-                  <button
-                    onClick={() => onTandaiSelesai(true)}
-                    className="editorial-btn w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
-                  >
-                    <Sparkles size={13} /> Terbitkan ke Ruang Publik
-                  </button>
-                )}
-
-                {(selectedDoc.status === 'Terkumpul' || selectedDoc.status === 'Selesai') && !selectedDoc.isPublic && (
-                  <button
-                    onClick={async () => {
-                      await DataService.updateStatusDokumen(selectedDocId, 'Draf', false);
-                    }}
-                    className="editorial-btn w-full bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-300 text-[11px] py-1.5 cursor-pointer justify-center"
-                  >
-                    <RotateCcw size={12} /> Kembalikan ke Draf Siswa
-                  </button>
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={() => onTandaiSelesai(true)}
+                      className="editorial-btn w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] py-1.5 cursor-pointer shadow-xs justify-center"
+                    >
+                      <Sparkles size={13} /> Terbitkan ke Ruang Publik
+                    </button>
+                    <button
+                      onClick={handleMintaRevisi}
+                      className="editorial-btn w-full bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-300 text-[11px] py-1.5 cursor-pointer justify-center"
+                      title="Buka kembali untuk revisi tambahan dari siswa"
+                    >
+                      <RotateCcw size={12} /> Buka Kembali untuk Revisi Siswa
+                    </button>
+                  </div>
                 )}
 
                 {selectedDoc.isPublic && (

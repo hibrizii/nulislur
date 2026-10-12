@@ -44,6 +44,8 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
   const lastEditTimeRef = useRef<number>(0);
   const lastLocalJudulRef = useRef<string>('');
   const lastTitleEditTimeRef = useRef<number>(0);
+  const topikRef = useRef<string>(topik);
+  topikRef.current = topik;
 
   // Show temporary toast notice
   const showToast = (message: string) => {
@@ -82,7 +84,10 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
         lastLocalTeksRef.current = data.teks || '';
       }
 
-      if (data.topik) setTopik(data.topik);
+      if (data.topik) {
+        setTopik(data.topik);
+        topikRef.current = data.topik;
+      }
       if (data.layoutMode) setLayoutMode(data.layoutMode);
       setIsPublic(Boolean(data.isPublic));
 
@@ -96,6 +101,15 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     return () => {
       unsub();
       DataService.updateAktivitas(user.username, 'Beranda', null);
+      if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // Flush save on unmount
+      DataService.simpanDokumen(
+        docId,
+        lastLocalJudulRef.current,
+        lastLocalTeksRef.current,
+        topikRef.current
+      ).catch(() => {});
     };
   }, [docId, user.username, onBack]);
 
@@ -110,15 +124,15 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     titleTimerRef.current = setTimeout(async () => {
       try {
-        await DataService.simpanDokumen(docId, newTitle, teks, topik);
+        await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current, topikRef.current);
         setSaveStatus('saved');
       } catch (err) {
         console.warn('Gagal auto-save judul:', err);
       }
-    }, 800);
+    }, 600);
   };
 
-  // Debounced editor content update
+  // Debounced editor content update (menggunakan ref terkini agar tidak ada stale closure)
   const handleEditorUpdate = (html: string) => {
     lastLocalTeksRef.current = html;
     lastEditTimeRef.current = Date.now();
@@ -128,12 +142,35 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
-        await DataService.simpanDokumen(docId, judul, html, topik);
+        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html, topikRef.current);
         setSaveStatus('saved');
       } catch (err) {
         console.warn('Gagal auto-save teks:', err);
       }
-    }, 800);
+    }, 600);
+  };
+
+  // Handler Kembali dengan Flush Auto-Save Seketika
+  const handleBackWithFlush = async () => {
+    if (titleTimerRef.current) {
+      clearTimeout(titleTimerRef.current);
+      titleTimerRef.current = null;
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    try {
+      await DataService.simpanDokumen(
+        docId,
+        lastLocalJudulRef.current,
+        lastLocalTeksRef.current,
+        topikRef.current
+      );
+    } catch (err) {
+      console.warn('Gagal flush draf saat kembali:', err);
+    }
+    onBack();
   };
 
   // Topic change handler
@@ -230,7 +267,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
         <header className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-stone-200 dark:border-stone-800">
           <button
             type="button"
-            onClick={onBack}
+            onClick={handleBackWithFlush}
             className="editorial-btn bg-white hover:bg-stone-100 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 py-2 px-3 text-xs border border-stone-200 dark:border-stone-700 cursor-pointer flex items-center gap-1.5 rounded-xl font-medium shadow-2xs"
           >
             <ArrowLeft size={14} /> Kembali

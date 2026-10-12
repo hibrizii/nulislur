@@ -190,6 +190,11 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     return () => {
       unsub();
       DataService.updateAktivitas(username, 'Beranda', null);
+      if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (docId) {
+        DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current).catch(() => {});
+      }
     };
   }, [docId, username, onBackToLobby]);
 
@@ -204,10 +209,10 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     titleTimerRef.current = setTimeout(async () => {
       if (doc && doc.status === 'Draf') {
-        await DataService.simpanDokumen(docId, newTitle, teks);
+        await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current);
         setSaveStatus('saved');
       }
-    }, 800);
+    }, 600);
   };
 
   // Debounced editor content update
@@ -220,10 +225,30 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       if (doc && doc.status === 'Draf') {
-        await DataService.simpanDokumen(docId, judul, html);
+        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html);
         setSaveStatus('saved');
       }
-    }, 1000);
+    }, 600);
+  };
+
+  // Handler Kembali dengan Flush Auto-Save Seketika
+  const handleBackWithFlush = async () => {
+    if (titleTimerRef.current) {
+      clearTimeout(titleTimerRef.current);
+      titleTimerRef.current = null;
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (doc && doc.status === 'Draf') {
+      try {
+        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current);
+      } catch (e) {
+        console.warn('Gagal flush draf siswa:', e);
+      }
+    }
+    onBackToLobby();
   };
 
   // Kumpulkan tugas
@@ -283,7 +308,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       {/* Header Bar */}
       <header className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-stone-200 dark:border-stone-800">
         <button
-          onClick={onBackToLobby}
+          onClick={handleBackWithFlush}
           className="editorial-btn bg-white hover:bg-stone-100 text-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 py-2 px-3 text-xs border border-stone-200 dark:border-stone-700 cursor-pointer"
         >
           <ArrowLeft size={14} /> Kembali

@@ -1598,6 +1598,9 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
   const [cachedSelection, setCachedSelection] = useState<{ from: number; to: number } | null>(null);
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
   // State Slash Command (/) Rubrik Guru
   const [selectedTeacherTags, setSelectedTeacherTags] = useState<string[]>([]);
   const [teacherSlashOpen, setTeacherSlashOpen] = useState(false);
@@ -1935,7 +1938,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       }
       view.dispatch(tr);
       curEditor.commands.focus();
-      onUpdate?.(curEditor.getHTML());
+      onUpdateRef.current?.(curEditor.getHTML());
     } catch (err) {
       console.error('Error inserting table row/col:', err);
     }
@@ -2171,7 +2174,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       });
       if (found) {
         currentEditor.view.dispatch(tr);
-        onUpdate?.(currentEditor.getHTML());
+        onUpdateRef.current?.(currentEditor.getHTML());
       }
     } else {
       currentEditor
@@ -2208,7 +2211,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     });
     if (found) {
       currentEditor.view.dispatch(tr);
-      onUpdate?.(currentEditor.getHTML());
+      onUpdateRef.current?.(currentEditor.getHTML());
     }
     setFootnoteModalState({ isOpen: false, isEdit: false, id: '', text: '' });
     setTimeout(() => {
@@ -2916,7 +2919,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       }
 
       lastEmittedHtmlRef.current = html;
-      onUpdate?.(html);
+      onUpdateRef.current?.(html);
       updateFootnotesList();
       updateTocHeadings(editor);
       const found = checkForDocToc(editor);
@@ -3630,7 +3633,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     activeMarkFeedback.markElement.setAttribute('data-pesan', newPesan || 'Perlu perbaikan');
     const updatedHtml = editor.view.dom.innerHTML;
     editor.commands.setContent(updatedHtml, { emitUpdate: false });
-    onUpdate?.(editor.getHTML());
+    onUpdateRef.current?.(editor.getHTML());
     setActiveMarkFeedback((prev) => (prev ? { ...prev, pesan: newPesan } : null));
     setIsEditingFeedback(false);
   };
@@ -3647,7 +3650,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       parent.removeChild(markEl);
       const updatedHtml = editor.view.dom.innerHTML;
       editor.commands.setContent(updatedHtml, { emitUpdate: false });
-      onUpdate?.(editor.getHTML());
+      onUpdateRef.current?.(editor.getHTML());
     }
     setActiveMarkFeedback(null);
     setIsEditingFeedback(false);

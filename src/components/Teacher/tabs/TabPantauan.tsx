@@ -6,7 +6,8 @@ import {
   Eye, 
   LayoutGrid, 
   List, 
-  Clock
+  Clock,
+  PenTool
 } from 'lucide-react';
 import type { UserAccount, LiveStatus, Dokumen, KelasRoom } from '../../../types';
 
@@ -206,15 +207,15 @@ export const TabPantauan: React.FC<TabPantauanProps> = ({
           </div>
 
           <div className="p-2.5 bg-white dark:bg-[#141416] rounded-xl border border-stone-200/80 dark:border-stone-800 shadow-2xs">
-            <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">
-              <span>Aktif Online</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">
+              <span>Sedang Menulis</span>
+              <PenTool size={13} className="text-blue-500" />
             </div>
-            <div className="text-lg font-black font-serif-literary text-emerald-700 dark:text-emerald-400">
-              {onlineCount}
+            <div className="text-lg font-black font-serif-literary text-blue-700 dark:text-blue-400">
+              {typingCount}
             </div>
             <span className="text-[10px] text-stone-400 truncate block">
-              {typingCount} sedang menulis
+              {onlineCount > 0 ? `${typingCount} dari ${onlineCount} siswa online` : 'Belum ada aktivitas'}
             </span>
           </div>
 

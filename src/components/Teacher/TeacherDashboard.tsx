@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { DataService } from '../../services/dataService';
+import { DataService, parseDocumentTagCounts, hitungPenilaianOtomatis } from '../../services/dataService';
 import type { 
   Dokumen, 
   LiveStatus, 
@@ -394,11 +394,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
     });
   };
 
-  // Handler Tandai Selesai / Beri Izin Publikasi
+  // Handler Tandai Selesai / Beri Izin Publikasi (Menghitung & Menyimpan Nilai Final)
   const handleTandaiSelesai = async (izinPublikasi: boolean) => {
     if (!selectedDocId) return;
     const doc = dokumenMap[selectedDocId];
     if (!doc) return;
+
+    // Hitung dan simpan penilaian akhir agar tercatat secara permanen di rekap kelas & profil siswa
+    const tags = parseDocumentTagCounts(doc.teks);
+    const penilaian = doc.penilaian || hitungPenilaianOtomatis(doc, tags, doc.feedbackUmum);
+    await DataService.simpanPenilaian(selectedDocId, penilaian, true);
 
     if (izinPublikasi) {
       await DataService.updateStatusDokumen(selectedDocId, 'Selesai', false);
