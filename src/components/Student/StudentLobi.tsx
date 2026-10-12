@@ -340,7 +340,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     return () => unsub();
   }, []);
 
-  // Filter Woro-woro: Sembunyikan tugas yang sudah dikumpulkan/selesai oleh siswa ini
+  // Filter Woro-woro: Sembunyikan tugas yang sudah dikumpulkan/selesai oleh siswa ini atau jika tugas telah dihapus guru
   const filteredPengumumanList = React.useMemo(() => {
     return pengumumanList.filter((p) => {
       // Filter kelas jika ada (case-insensitive)
@@ -352,12 +352,20 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       ) {
         return false;
       }
-      // Jika woro-woro penugasan, sembunyikan jika siswa sudah submit (Terkumpul atau Selesai) untuk penugasan ini
+      // Jika woro-woro penugasan
       if (p.tugasId) {
+        // Jika penugasan sudah termuat di lobi, pastikan tugas tersebut belum dihapus guru
+        if (penugasanList.length > 0) {
+          const tugasAda = penugasanList.some((t) => String(t.id) === String(p.tugasId));
+          if (!tugasAda) {
+            return false;
+          }
+        }
+        // Sembunyikan jika siswa sudah submit (Terkumpul atau Selesai) untuk penugasan ini
         const sudahSubmit = dokumenList.some(
           (d) =>
             (d.status === 'Terkumpul' || d.status === 'Selesai') &&
-            Boolean(d.tugasId && d.tugasId === p.tugasId)
+            Boolean(d.tugasId && String(d.tugasId) === String(p.tugasId))
         );
         if (sudahSubmit) {
           return false;
@@ -365,7 +373,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       }
       return true;
     });
-  }, [pengumumanList, dokumenList, kodeKelas]);
+  }, [pengumumanList, dokumenList, kodeKelas, penugasanList]);
 
   // Optimalisasi: Memoize daftar ID naskah mading agar tidak unsubscribe/resubscribe puluhan listener saat siswa mengetik draf
   const madingIdsKey = React.useMemo(() => madingList.map((d) => d.id).join(','), [madingList]);

@@ -101,8 +101,12 @@ CREATE TABLE IF NOT EXISTS public.pengumuman (
     teks TEXT NOT NULL,
     waktu TEXT NOT NULL,
     kode_kelas TEXT DEFAULT 'Umum',
+    tugas_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migrasi jika tabel pengumuman sudah ada sebelumnya
+ALTER TABLE public.pengumuman ADD COLUMN IF NOT EXISTS tugas_id TEXT;
 
 -- 8. TABEL KEHADIRAN & STATUS LIVE SISWA (SENSOR MEJA KERJA)
 CREATE TABLE IF NOT EXISTS public.kehadiran_live (
@@ -139,6 +143,7 @@ CREATE INDEX IF NOT EXISTS idx_users_kode_kelas ON public.users (kode_kelas);
 CREATE INDEX IF NOT EXISTS idx_penugasan_kode_kelas ON public.penugasan (kode_kelas);
 CREATE INDEX IF NOT EXISTS idx_komentar_doc_id ON public.komentar (doc_id);
 CREATE INDEX IF NOT EXISTS idx_likes_doc_id ON public.likes (doc_id);
+CREATE INDEX IF NOT EXISTS idx_pengumuman_tugas_id ON public.pengumuman (tugas_id);
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) & KEBIJAKAN AKSES

@@ -584,15 +584,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
 
           {/* TAB CUITAN SISWA */}
           {activeTab === 'cuitan' && (
-            <div className="max-w-3xl mx-auto w-full py-2">
-              <LinimasaCuitan
-                currentUser={{
-                  username: user.username,
-                  nama: user.nama,
-                  role: 'guru',
-                  kodeKelas: selectedFilterClass === 'semua' ? undefined : selectedFilterClass,
-                }}
-              />
+            <div className="h-full min-h-0 overflow-y-auto custom-scrollbar w-full py-2 pr-1">
+              <div className="max-w-3xl mx-auto">
+                <LinimasaCuitan
+                  currentUser={{
+                    username: user.username,
+                    nama: user.nama,
+                    role: 'guru',
+                    kodeKelas: selectedFilterClass === 'semua' ? undefined : selectedFilterClass,
+                  }}
+                />
+              </div>
             </div>
           )}
 

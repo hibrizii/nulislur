@@ -2428,6 +2428,10 @@ export const DataService = {
     topik?: string;
     targetKataMin?: number | null;
   }): Promise<void> {
+    const namaKelasDisplay = params.namaKelas || params.kodeKelas;
+    const infoDeadline = params.tenggatWaktu ? ` (Deadline: ${params.tenggatWaktu})` : '';
+    const updatedWoroTeks = `[TUGAS:${id}] 📋 Tugas: "${params.judul}" (${namaKelasDisplay})${infoDeadline} — Silakan baca instruksi dan mulai menyusun karyamu!`;
+
     if (isSupabaseConfigured) {
       try {
         const payload: Record<string, unknown> = {
@@ -2442,10 +2446,12 @@ export const DataService = {
         await supabase.from('penugasan').update(payload).eq('id', id);
 
         // Update juga teks woro-woro yang terkait jika ada
-        const namaKelasDisplay = params.namaKelas || params.kodeKelas;
-        const infoDeadline = params.tenggatWaktu ? ` (Deadline: ${params.tenggatWaktu})` : '';
-        const updatedWoroTeks = `[TUGAS:${id}] 📋 Tugas: "${params.judul}" (${namaKelasDisplay})${infoDeadline} — Silakan baca instruksi dan mulai menyusun karyamu!`;
-        await supabase.from('pengumuman').update({ teks: updatedWoroTeks, kode_kelas: params.kodeKelas }).ilike('teks', `%[TUGAS:${id}]%`);
+        try {
+          await supabase.from('pengumuman').update({ teks: updatedWoroTeks, kode_kelas: params.kodeKelas }).eq('tugas_id', id);
+        } catch {}
+        try {
+          await supabase.from('pengumuman').update({ teks: updatedWoroTeks, kode_kelas: params.kodeKelas }).ilike('teks', `%${id}%`);
+        } catch {}
       } catch (e) {
         console.warn('Supabase penugasan update fallback:', e);
       }
@@ -2465,15 +2471,14 @@ export const DataService = {
       };
     }
     // Update pengumuman lokal jika ada
-    const namaKelasDisplay = params.namaKelas || params.kodeKelas;
-    const infoDeadline = params.tenggatWaktu ? ` (Deadline: ${params.tenggatWaktu})` : '';
-    const updatedWoroTeks = `[TUGAS:${id}] 📋 Tugas: "${params.judul}" (${namaKelasDisplay})${infoDeadline} — Silakan baca instruksi dan mulai menyusun karyamu!`;
-    local.pengumuman.forEach((p) => {
-      if (p.tugasId === id || p.teks.includes(`[TUGAS:${id}]`)) {
-        p.teks = updatedWoroTeks;
-        p.kodeKelas = params.kodeKelas;
-      }
-    });
+    if (local.pengumuman) {
+      local.pengumuman.forEach((p) => {
+        if (String(p.tugasId || '') === String(id) || p.teks.includes(String(id))) {
+          p.teks = `📋 Tugas: "${params.judul}" (${namaKelasDisplay})${infoDeadline} — Silakan baca instruksi dan mulai menyusun karyamu!`;
+          p.kodeKelas = params.kodeKelas;
+        }
+      });
+    }
     saveLocalDB(local);
 
     if (typeof window !== 'undefined') {
@@ -2485,14 +2490,23 @@ export const DataService = {
     if (isSupabaseConfigured) {
       try {
         await supabase.from('penugasan').delete().eq('id', id);
-        await supabase.from('pengumuman').delete().ilike('teks', `%[TUGAS:${id}]%`);
+      } catch (e) {
+        console.warn('Gagal hapus penugasan dari Supabase:', e);
+      }
+      try {
+        await supabase.from('pengumuman').delete().eq('tugas_id', id);
+      } catch {}
+      try {
+        await supabase.from('pengumuman').delete().ilike('teks', `%${id}%`);
       } catch {}
     }
     const local = getLocalDB();
     if (local.penugasan && local.penugasan[id]) {
       delete local.penugasan[id];
     }
-    local.pengumuman = local.pengumuman.filter((p) => p.tugasId !== id && !p.teks.includes(`[TUGAS:${id}]`));
+    local.pengumuman = (local.pengumuman || []).filter(
+      (p) => String(p.tugasId || '') !== String(id) && !p.teks.includes(String(id))
+    );
     saveLocalDB(local);
 
     if (typeof window !== 'undefined') {
@@ -2950,7 +2964,17 @@ export const DataService = {
   },
 
   listenPenugasan(callback: (items: Penugasan[]) => void, kodeKelas?: string): () => void {
+    const getLocalList = () => {
+      const local = getLocalDB();
+      const list = Object.values(local.penugasan || {});
+      return (!kodeKelas || kodeKelas === 'semua')
+        ? list
+        : list.filter((p) => p.kodeKelas === kodeKelas);
+    };
+
     if (isSupabaseConfigured) {
+      let hasFetchedFromSupabase = false;
+
       const fetchAll = async () => {
         try {
           let query = supabase.from('penugasan').select('*').order('created_at', { ascending: false });
@@ -2972,19 +2996,35 @@ export const DataService = {
               topik: row.topik || undefined,
               targetKataMin: row.target_kata_min ? Number(row.target_kata_min) : null,
             }));
+
+            // Sync cache localDB agar sinkron dan tidak kosong saat event local db_change terpicu
+            try {
+              const local = getLocalDB();
+              const penugasanCache: Record<string, Penugasan> = (!kodeKelas || kodeKelas === 'semua') ? {} : (local.penugasan || {});
+              mapped.forEach((p) => {
+                penugasanCache[p.id] = p;
+              });
+              local.penugasan = penugasanCache;
+              saveLocalDB(local);
+            } catch {}
+
+            hasFetchedFromSupabase = true;
             callback(mapped);
             return;
           }
-        } catch {}
-        // Fallback ke local
-        const local = getLocalDB();
-        const list = Object.values(local.penugasan || {});
-        const filtered = (!kodeKelas || kodeKelas === 'semua')
-          ? list
-          : list.filter((p) => p.kodeKelas === kodeKelas);
-        callback(filtered);
+        } catch (err) {
+          console.warn('Fetch penugasan Supabase error:', err);
+        }
+
+        // Fallback ke local hanya jika fetch Supabase gagal
+        callback(getLocalList());
       };
 
+      // Tampilkan cache lokal awal jika ada, lalu fetch data terbaru dari Supabase
+      const initialLocal = getLocalList();
+      if (initialLocal.length > 0) {
+        callback(initialLocal);
+      }
       fetchAll();
 
       const channel = supabase
@@ -2995,12 +3035,10 @@ export const DataService = {
         .subscribe();
 
       const updateLocal = () => {
-        const local = getLocalDB();
-        const list = Object.values(local.penugasan || {});
-        const filtered = (!kodeKelas || kodeKelas === 'semua')
-          ? list
-          : list.filter((p) => p.kodeKelas === kodeKelas);
-        callback(filtered);
+        const list = getLocalList();
+        if (hasFetchedFromSupabase || list.length > 0) {
+          callback(list);
+        }
       };
       window.addEventListener('nulislur_db_change', updateLocal);
 
@@ -3011,12 +3049,7 @@ export const DataService = {
     }
 
     const update = () => {
-      const local = getLocalDB();
-      const list = Object.values(local.penugasan || {});
-      const filtered = (!kodeKelas || kodeKelas === 'semua')
-        ? list
-        : list.filter((p) => p.kodeKelas === kodeKelas);
-      callback(filtered);
+      callback(getLocalList());
     };
     update();
     window.addEventListener('nulislur_db_change', update);
@@ -3236,13 +3269,20 @@ export const DataService = {
 
   async hapusPengumuman(id: string) {
     if (isSupabaseConfigured) {
-      await supabase.from('pengumuman').delete().eq('id', id);
-      return;
+      try {
+        await supabase.from('pengumuman').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Gagal hapus pengumuman Supabase:', e);
+      }
     }
 
     const local = getLocalDB();
-    local.pengumuman = local.pengumuman.filter((p) => p.id !== id);
+    local.pengumuman = (local.pengumuman || []).filter((p) => p.id !== id);
     saveLocalDB(local);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nulislur_db_change'));
+    }
   },
 
   // 11b. Kutipan Sastra Harian (Quotes Inspiratif)
