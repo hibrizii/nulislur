@@ -150,9 +150,24 @@ function mapDokumenRow(row: Record<string, unknown>): Dokumen {
   };
 }
 
-// Helper Parsing Tag Koreksi Guru dari Naskah Siswa
-export function parseDocumentTagCounts(teks: string): Record<string, number> {
-  const counts: Record<string, number> = {
+export interface TagCountsRecord {
+  [key: string]: any;
+  kapital: number;
+  imbuhan: number;
+  tanda_baca: number;
+  kebakuan: number;
+  diksi: number;
+  kalimat: number;
+  gagasan: number;
+  kohesi: number;
+  struktur: number;
+  _unresolved?: Record<string, number>;
+  _resolved?: Record<string, number>;
+}
+
+// Helper Parsing Tag Koreksi Guru dari Naskah Siswa (Membedakan Belum Direvisi vs Sudah Direvisi)
+export function parseDocumentTagCounts(teks: string): TagCountsRecord {
+  const counts: TagCountsRecord = {
     kapital: 0,
     imbuhan: 0,
     tanda_baca: 0,
@@ -163,7 +178,34 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
     kohesi: 0,
     struktur: 0,
   };
-  if (!teks) return counts;
+  const unresolved: Record<string, number> = {
+    kapital: 0,
+    imbuhan: 0,
+    tanda_baca: 0,
+    kebakuan: 0,
+    diksi: 0,
+    kalimat: 0,
+    gagasan: 0,
+    kohesi: 0,
+    struktur: 0,
+  };
+  const resolved: Record<string, number> = {
+    kapital: 0,
+    imbuhan: 0,
+    tanda_baca: 0,
+    kebakuan: 0,
+    diksi: 0,
+    kalimat: 0,
+    gagasan: 0,
+    kohesi: 0,
+    struktur: 0,
+  };
+
+  if (!teks) {
+    counts._unresolved = unresolved;
+    counts._resolved = resolved;
+    return counts;
+  }
 
   const badgeMap: Record<string, string> = {
     'huruf kapital': 'kapital',
@@ -185,12 +227,13 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
     'struktur': 'struktur',
   };
 
-  // 1. Ekstrak dari seluruh tag <mark ...> (Prioritas utama: atribut data-tag)
+  // 1. Ekstrak dari seluruh tag <mark ...> (Prioritas utama: atribut data-tag & data-resolved)
   const markRegex = /<mark\b([^>]*)>/gi;
   let markMatch: RegExpExecArray | null;
 
   while ((markMatch = markRegex.exec(teks)) !== null) {
     const attrs = markMatch[1];
+    const isResolved = /data-resolved=["']true["']/i.test(attrs);
     let countedFromDataTag = false;
 
     // Prioritas 1: Atribut data-tag
@@ -200,6 +243,11 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
       for (const tag of rawTags) {
         if (counts[tag] !== undefined) {
           counts[tag]++;
+          if (isResolved) {
+            resolved[tag] = (resolved[tag] || 0) + 1;
+          } else {
+            unresolved[tag] = (unresolved[tag] || 0) + 1;
+          }
           countedFromDataTag = true;
         }
       }
@@ -216,6 +264,11 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
           const mapped = badgeMap[key];
           if (mapped && counts[mapped] !== undefined) {
             counts[mapped]++;
+            if (isResolved) {
+              resolved[mapped] = (resolved[mapped] || 0) + 1;
+            } else {
+              unresolved[mapped] = (unresolved[mapped] || 0) + 1;
+            }
           }
         }
       }
@@ -230,9 +283,12 @@ export function parseDocumentTagCounts(teks: string): Record<string, number> {
     const mapped = badgeMap[key];
     if (mapped && counts[mapped] !== undefined) {
       counts[mapped]++;
+      unresolved[mapped] = (unresolved[mapped] || 0) + 1;
     }
   }
 
+  counts._unresolved = unresolved;
+  counts._resolved = resolved;
   return counts;
 }
 
@@ -246,29 +302,79 @@ function hitungSkorVariabel(errorCount: number, baseScore = 5): number {
   return Math.max(1.5, 2.0 - (errorCount - 5) * 0.2);
 }
 
+// Hitung Skor Variabel dengan Pemulihan Nilai Revisi (Recovery):
+// Jika kesalahan ditandai "Sudah Direvisi", penalti dipulihkan 60%.
+// Contoh: 1 kesalahan (penalti 0.5) -> direvisi -> pulih 0.3 -> sisa penalti 0.2 -> skor naik dari 4.5 menjadi 4.8!
+export function hitungSkorVariabelDenganRevisi(
+  unresolvedCount: number,
+  resolvedCount: number,
+  baseScore = 5
+): number {
+  const totalCount = unresolvedCount + resolvedCount;
+  if (totalCount <= 0) return baseScore;
+
+  const rawScore = hitungSkorVariabel(totalCount, baseScore);
+  const totalPenalty = baseScore - rawScore;
+
+  if (resolvedCount <= 0) {
+    return Number(rawScore.toFixed(1));
+  }
+
+  const recoveryRatio = (resolvedCount / totalCount) * 0.6;
+  const recoveredPoints = totalPenalty * recoveryRatio;
+  const finalScore = Math.min(baseScore, Math.max(1, rawScore + recoveredPoints));
+
+  return Number(finalScore.toFixed(1));
+}
+
 // Helper Otomatisasi Penilaian Rubrik Holistik Berbasis Naskah & Catatan Guru (Zero-Friction)
 export function hitungPenilaianOtomatis(
   doc: Dokumen, 
-  customTagCounts?: Record<string, number>, 
+  customTagCounts?: Record<string, number> | TagCountsRecord, 
   catatanUmum?: string
 ): PenilaianRubrik {
-  const tagCounts = customTagCounts || parseDocumentTagCounts(doc.teks);
+  // 1. Keadaan Draf Awal (sebelum pernah dikumpulkan siswa):
+  // Feedback guru berstatus murni pendampingan/mentoring/saran ramah anak.
+  // Sama sekali TIDAK berpengaruh ke nilai (skor tetap utuh 100).
+  const isDrafAwal = doc.status === 'Draf' && !doc.waktuKumpul;
+  if (isDrafAwal) {
+    return {
+      kedalamanGagasan: 5,
+      kepaduanParagraf: 5,
+      strukturTeks: 5,
+      efektivitasKalimat: 5,
+      ketepatanDiksi: 5,
+      kebakuanEjaan: 5,
+      pembentukanKata: 5,
+      tandaBaca: 5,
+      hurufKapital: 5,
+      skorMakro: 100,
+      skorMikro: 100,
+      skorTotal: 100,
+      predikat: 'Sangat Baik',
+      catatanGuru: catatanUmum || doc.feedbackUmum,
+      waktuDinilai: getWaktuSekarang(),
+      tagCounts: {},
+    };
+  }
 
-  // Sifat Penilaian adalah KOREKSI (Deductive Grading):
-  // Seluruh 9 aspek bermula dari nilai PENUH (5.0 / 5.0).
-  // Nilai HANYA berkurang saat guru memberikan tag catatan koreksi pada aspek tersebut.
-  // Jika belum/tidak ada feedback sama sekali, nilai siswa adalah 100 (Sempurna / Full).
-  const kedalamanGagasan = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.gagasan || 0, 5)));
-  const kepaduanParagraf = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kohesi || 0, 5)));
-  const strukturTeks = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.struktur || 0, 5)));
+  // 2. Keadaan Naskah Sudah Dikumpulkan / Dalam Siklus Revisi:
+  // Sistem penilaian resmi berjalan aktif dengan penalti & pemulihan revisi.
+  const tagCounts: TagCountsRecord = (customTagCounts as TagCountsRecord) || parseDocumentTagCounts(doc.teks);
+  const unresolved = tagCounts._unresolved || (tagCounts as Record<string, number>);
+  const resolved = tagCounts._resolved || {};
 
-  // Aspek Mikro (6 Variabel): dihitung dari frekuensi tag mikro
-  const efektivitasKalimat = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kalimat || 0, 5)));
-  const ketepatanDiksi = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.diksi || 0, 5)));
-  const kebakuanEjaan = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kebakuan || 0, 5)));
-  const pembentukanKata = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.imbuhan || 0, 5)));
-  const tandaBaca = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.tanda_baca || 0, 5)));
-  const hurufKapital = Math.min(5, Math.max(1, hitungSkorVariabel(tagCounts.kapital || 0, 5)));
+  const kedalamanGagasan = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.gagasan || 0, resolved.gagasan || 0, 5)));
+  const kepaduanParagraf = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.kohesi || 0, resolved.kohesi || 0, 5)));
+  const strukturTeks = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.struktur || 0, resolved.struktur || 0, 5)));
+
+  // Aspek Mikro (6 Variabel)
+  const efektivitasKalimat = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.kalimat || 0, resolved.kalimat || 0, 5)));
+  const ketepatanDiksi = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.diksi || 0, resolved.diksi || 0, 5)));
+  const kebakuanEjaan = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.kebakuan || 0, resolved.kebakuan || 0, 5)));
+  const pembentukanKata = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.imbuhan || 0, resolved.imbuhan || 0, 5)));
+  const tandaBaca = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.tanda_baca || 0, resolved.tanda_baca || 0, 5)));
+  const hurufKapital = Math.min(5, Math.max(1, hitungSkorVariabelDenganRevisi(unresolved.kapital || 0, resolved.kapital || 0, 5)));
 
   // Skor Makro (0 - 100): Rata-rata 3 variabel x 20
   const skorMakro = Math.round(((kedalamanGagasan + kepaduanParagraf + strukturTeks) / 3) * 20);

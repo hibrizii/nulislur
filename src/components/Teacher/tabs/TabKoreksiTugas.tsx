@@ -22,7 +22,8 @@ import {
   ShieldAlert,
   AlertTriangle,
   RotateCcw,
-  CloudCheck
+  CloudCheck,
+  CheckCircle
 } from 'lucide-react';
 import type { Dokumen, UserAccount, Komentar, Penugasan } from '../../../types';
 import { NulisEditor } from '../../Editor/NulisEditor';
@@ -113,6 +114,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   // Catatan Guru State & Timer Debounce Auto-Save
   const [catatanUmum, setCatatanUmum] = useState<string>('');
   const [catatanSavedNotice, setCatatanSavedNotice] = useState<boolean>(false);
+  const [editorKey, setEditorKey] = useState<number>(0);
   const catatanTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -200,6 +202,38 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
   const handleApplyTemplate = (templateText: string) => {
     const nextVal = catatanUmum ? `${catatanUmum}\n${templateText}` : templateText;
     handleCatatanChange(nextVal);
+  };
+
+  // Handler Tandai Semua Koreksi Telah Direvisi:
+  // Menandai seluruh tag koreksi/highlight di naskah dengan data-resolved="true"
+  // dan memulihkan skor aspek rubrik siswa secara proporsional (tanpa mengubah status Selesai)
+  const handleTandaiSemuaDirevisi = async () => {
+    if (!selectedDocId || !selectedDoc) return;
+    const rawTeks = selectedDoc.teks || '';
+    if (!rawTeks.includes('<mark')) return;
+
+    try {
+      const updatedTeks = rawTeks.replace(/<mark\b([^>]*?)>/gi, (match, attrs) => {
+        if (!/data-resolved=["']true["']/i.test(attrs)) {
+          return `<mark ${attrs} data-resolved="true">`;
+        }
+        return match;
+      });
+
+      await DataService.simpanDokumen(selectedDocId, selectedDoc.judul, updatedTeks);
+      const tags = parseDocumentTagCounts(updatedTeks);
+      const autoPenilaian = hitungPenilaianOtomatis({ ...selectedDoc, teks: updatedTeks }, tags, catatanUmum);
+      await DataService.simpanPenilaian(selectedDocId, autoPenilaian, false);
+      if (dokumenMap[selectedDocId]) {
+        dokumenMap[selectedDocId].teks = updatedTeks;
+        dokumenMap[selectedDocId].penilaian = autoPenilaian;
+      }
+      setEditorKey((prev) => prev + 1);
+      if (onDokumenUpdated) onDokumenUpdated();
+    } catch (err: any) {
+      console.error('Gagal menandai semua revisi:', err);
+      alert('Gagal menandai revisi: ' + (err?.message || 'Terjadi kesalahan'));
+    }
   };
 
   // Auto detect koreksi tag dari naskah
@@ -868,7 +902,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                 <div className="max-w-4xl mx-auto bg-white dark:bg-[#141416] rounded-2xl border border-stone-200/80 dark:border-stone-800 p-6 sm:p-10 shadow-xs mb-8">
                   {/* Tiptap NulisEditor mode Teacher */}
                   <NulisEditor
-                    key={`guru_${selectedDocId}_${selectedDoc.layoutMode || 'kertas'}`}
+                    key={`guru_${selectedDocId}_${selectedDoc.layoutMode || 'kertas'}_${editorKey}`}
                     initialContent={selectedDoc.teks}
                     isTeacher={true}
                     readOnly={false}
@@ -1078,15 +1112,26 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       <span className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider block">
                         Koreksi Inline Terdeteksi:
                       </span>
-                      {detectedTagCounts && Object.values(detectedTagCounts).some((c) => c > 0) ? (
+                      {detectedTagCounts && Object.entries(detectedTagCounts).some(([k, c]) => !k.startsWith('_') && typeof c === 'number' && c > 0) ? (
                         <div className="flex flex-wrap gap-1">
                           {Object.entries(detectedTagCounts)
-                            .filter(([_, count]) => count > 0)
-                            .map(([k, c]) => (
-                              <span key={k} className="px-2 py-0.5 rounded-md bg-stone-200 dark:bg-stone-800 text-[10px] font-semibold text-stone-800 dark:text-stone-200">
-                                {k}: {c}x
-                              </span>
-                            ))}
+                            .filter(([k, count]) => !k.startsWith('_') && typeof count === 'number' && count > 0)
+                            .map(([k, c]) => {
+                              const resCount = detectedTagCounts._resolved?.[k] || 0;
+                              return (
+                                <span
+                                  key={k}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 ${
+                                    resCount > 0
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                      : 'bg-stone-200 dark:bg-stone-800 text-stone-800 dark:text-stone-200'
+                                  }`}
+                                >
+                                  <span>{k}: {c}x</span>
+                                  {resCount > 0 && <span className="text-[9px] font-bold">({resCount} direvisi ✓)</span>}
+                                </span>
+                              );
+                            })}
                         </div>
                       ) : (
                         <p className="text-[11px] text-stone-400 italic">Belum ada tag koreksi inline disisipkan.</p>
@@ -1145,9 +1190,15 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
 
               {/* Status Dokumen & Tindakan (Footer Inspektor) */}
               <div className="shrink-0 p-3 bg-stone-50/70 dark:bg-stone-900/40 border-t border-stone-100 dark:border-stone-800 space-y-1.5">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 block mb-1">
-                  Status & Aksi:
-                </span>
+                {selectedDoc.teks && selectedDoc.teks.includes('<mark') && (
+                  <button
+                    onClick={handleTandaiSemuaDirevisi}
+                    className="editorial-btn w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-[11px] py-1.5 cursor-pointer shadow-2xs justify-center font-medium transition-colors"
+                    title="Tandai semua catatan koreksi telah selesai direvisi dan pulihkan nilai aspek (tanpa mengubah status Selesai)"
+                  >
+                    <CheckCircle size={13} className="text-emerald-600 dark:text-emerald-400" /> Tandai Telah Direvisi Semua
+                  </button>
+                )}
 
                 {selectedDoc.status === 'Draf' && (
                   <div className="space-y-1.5">
@@ -1292,7 +1343,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
           <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center relative custom-scrollbar">
             <div className="w-full max-w-4xl bg-white dark:bg-[#18181B] p-6 sm:p-12 rounded-2xl shadow-sm border border-stone-200/80 dark:border-stone-800 my-auto">
               <NulisEditor
-                key={`focus_${selectedDocId}_${selectedDoc.layoutMode || 'kertas'}`}
+                key={`focus_${selectedDocId}_${selectedDoc.layoutMode || 'kertas'}_${editorKey}`}
                 initialContent={selectedDoc.teks}
                 isTeacher={true}
                 readOnly={false}

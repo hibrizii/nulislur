@@ -429,7 +429,7 @@ function findHighlightSpan(doc: any, pos: number): HighlightSpan | null {
     }
 
     for (const m of matches) {
-      if (pos >= m.from && pos <= m.to) {
+      if (pos >= m.from && pos < m.to) {
         return m;
       }
     }
@@ -561,6 +561,18 @@ const CustomHighlight = Highlight.extend({
           }
           return {
             'data-tag': attributes['data-tag'],
+          };
+        },
+      },
+      'data-resolved': {
+        default: null,
+        parseHTML: element => element.getAttribute('data-resolved'),
+        renderHTML: attributes => {
+          if (!attributes['data-resolved']) {
+            return {};
+          }
+          return {
+            'data-resolved': attributes['data-resolved'],
           };
         },
       },
@@ -1937,6 +1949,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     text: string;
     markElement: HTMLElement | null;
     rect?: DOMRect;
+    isResolved?: boolean;
   } | null>(null);
   const [isEditingFeedback, setIsEditingFeedback] = useState(false);
   const [editingFeedbackText, setEditingFeedbackText] = useState('');
@@ -3168,6 +3181,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             const rawTag = mark.getAttribute('data-tag') || '';
             const text = mark.textContent || '';
             const rect = mark.getBoundingClientRect();
+            const isResolved = mark.getAttribute('data-resolved') === 'true';
             if (isTeacher) {
               const tagsFromAttr = rawTag ? rawTag.split(/[\s,]+/).filter(Boolean) : [];
               if (tagsFromAttr.length === 0) {
@@ -3180,6 +3194,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                 text,
                 markElement: mark,
                 rect,
+                isResolved,
               });
               setIsEditingFeedback(false);
               setEditingFeedbackText(pesan);
@@ -4117,6 +4132,25 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     setEditSlashOpen(false);
   };
 
+  // Tandai / Batalkan status Sudah Direvisi pada highlight tertentu (Memulihkan skor aspek dari 4.5 -> 4.8)
+  const toggleResolvedActiveMark = () => {
+    if (!activeMarkFeedback?.markElement || !editor) return;
+    const markEl = activeMarkFeedback.markElement;
+    const currentResolved = markEl.getAttribute('data-resolved') === 'true';
+    const nextResolved = !currentResolved;
+
+    if (nextResolved) {
+      markEl.setAttribute('data-resolved', 'true');
+    } else {
+      markEl.removeAttribute('data-resolved');
+    }
+
+    const updatedHtml = editor.view.dom.innerHTML;
+    editor.commands.setContent(updatedHtml, { emitUpdate: false });
+    onUpdateRef.current?.(editor.getHTML());
+    setActiveMarkFeedback((prev) => (prev ? { ...prev, isResolved: nextResolved } : null));
+  };
+
   // Update posisi popup saat di-scroll atau resize layar
   useEffect(() => {
     if (!activeMarkFeedback?.markElement) return;
@@ -4235,25 +4269,44 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           {!isEditingFeedback ? (
             <div className="relative z-10">
-              {activeMarkFeedback.tag && (
-                <div className="mb-2 flex flex-wrap gap-1">
-                  {activeMarkFeedback.tag.split(/[\s,]+/).filter(Boolean).map((t) => {
-                    const opt = TEACHER_FEEDBACK_OPTIONS.find((o) => o.id === t);
-                    return (
-                      <span
-                        key={t}
-                        className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 text-[10px] font-bold border border-amber-300/70 dark:border-amber-800"
-                      >
-                        {opt ? opt.tag : `[${t}]`}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="mb-2 flex items-center justify-between gap-1 flex-wrap">
+                {activeMarkFeedback.tag && (
+                  <div className="flex flex-wrap gap-1">
+                    {activeMarkFeedback.tag.split(/[\s,]+/).filter(Boolean).map((t) => {
+                      const opt = TEACHER_FEEDBACK_OPTIONS.find((o) => o.id === t);
+                      return (
+                        <span
+                          key={t}
+                          className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 text-[10px] font-bold border border-amber-300/70 dark:border-amber-800"
+                        >
+                          {opt ? opt.tag : `[${t}]`}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {activeMarkFeedback.isResolved && (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
+                    <Check size={10} /> Direvisi
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-stone-700 dark:text-stone-200 bg-amber-50/60 dark:bg-stone-800/60 p-2.5 rounded-xl border border-amber-200/60 dark:border-stone-700/60 mb-2.5 leading-relaxed font-sans">
                 {activeMarkFeedback.pesan || 'Tidak ada catatan tertulis'}
               </p>
-              <div className="flex items-center justify-end gap-1.5">
+              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={toggleResolvedActiveMark}
+                  className={`editorial-btn text-[11px] py-1 px-2.5 flex items-center gap-1 shadow-2xs cursor-pointer rounded-lg border font-medium transition-colors ${
+                    activeMarkFeedback.isResolved
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                  title={activeMarkFeedback.isResolved ? 'Batalkan status sudah direvisi' : 'Tandai bahwa bagian ini telah berhasil direvisi oleh siswa'}
+                >
+                  <Check size={12} /> {activeMarkFeedback.isResolved ? 'Sudah Direvisi ✓' : 'Sudah Direvisi'}
+                </button>
                 <button
                   type="button"
                   onClick={() => {

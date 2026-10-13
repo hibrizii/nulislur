@@ -32,10 +32,10 @@ const RUBRIC_VARIABLES = [
 export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokumenList, onOpenEditor }) => {
   const [selectedDocModal, setSelectedDocModal] = useState<Dokumen | null>(null);
 
-  // Filter dokumen yang sudah dinilai atau selesai
+  // Filter dokumen yang sudah resmi selesai dinilai guru
   const gradedDocs = useMemo(() => {
     return dokumenList
-      .filter((d) => d.status === 'Selesai' || Boolean(d.penilaian) || d.status === 'Terkumpul')
+      .filter((d) => d.status === 'Selesai')
       .map((d) => {
         let penilaian = d.penilaian;
         if (!penilaian) {
