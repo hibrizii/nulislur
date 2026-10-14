@@ -1805,8 +1805,8 @@ export const DataService = {
     // Sinyal instan saat pertama kali setup
     syncPresenceOnline();
 
-    // Heartbeat berkala setiap 8 detik agar status online dan aktivitas selalu segar di dashboard guru
-    const heartbeatTimer = setInterval(syncPresenceOnline, 8000);
+    // Heartbeat berkala setiap 60 detik agar hemat bandwidth & tidak membebani kuota log database
+    const heartbeatTimer = setInterval(syncPresenceOnline, 60000);
 
     const handleWindowUnload = () => {
       broadcastLiveMessage('status_update', {
@@ -3399,8 +3399,8 @@ export const DataService = {
         if (data) {
           data.forEach((r) => {
             const updatedAtMs = r.updated_at ? new Date(r.updated_at).getTime() : 0;
-            // Anggap online jika is_online true dan update terbaru < 35 detik lalu (atau jika updated_at kosong)
-            const isFresh = updatedAtMs > 0 ? (Date.now() - updatedAtMs < 35000) : true;
+            // Anggap online jika is_online true dan update terbaru < 120 detik lalu (atau jika updated_at kosong)
+            const isFresh = updatedAtMs > 0 ? (Date.now() - updatedAtMs < 120000) : true;
             const online = Boolean(r.is_online) && isFresh;
             liveMapCache[r.username] = {
               isOnline: online,
@@ -3418,10 +3418,15 @@ export const DataService = {
 
       fetchInitial();
 
-      // Polling berkala (2.5 detik) sebagai fallback jika ada paket WebSocket terputus
-      const pollTimer = setInterval(fetchInitial, 2500);
+      // Refresh data hanya saat jendela browser kembali aktif (fokus), tanpa polling terus-menerus
+      const handleWindowFocus = () => {
+        fetchInitial();
+      };
+      if (typeof window !== 'undefined') {
+        window.addEventListener('focus', handleWindowFocus);
+      }
 
-      // Dengarkan pembaruan database PostgreSQL pada saluran db terpisah
+      // Dengarkan pembaruan database PostgreSQL secara reaktif lewat Realtime WebSocket (hemat egress 99%)
       const dbChannel = supabase
         .channel('public:kehadiran_live_db')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'kehadiran_live' }, (p) => {
@@ -3429,7 +3434,7 @@ export const DataService = {
             const r = p.new as any;
             if (r && r.username) {
               const updatedAtMs = r.updated_at ? new Date(r.updated_at).getTime() : 0;
-              const isFresh = updatedAtMs > 0 ? (Date.now() - updatedAtMs < 35000) : true;
+              const isFresh = updatedAtMs > 0 ? (Date.now() - updatedAtMs < 120000) : true;
               const online = Boolean(r.is_online) && isFresh;
               liveMapCache[r.username] = {
                 isOnline: online,
@@ -3453,7 +3458,9 @@ export const DataService = {
         .subscribe();
 
       return () => {
-        clearInterval(pollTimer);
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', handleWindowFocus);
+        }
         liveBroadcastListeners.delete(liveBroadcastListener);
         localLiveBroadcast?.removeEventListener('message', localHandler);
         supabase.removeChannel(dbChannel);
