@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "@tiptap/extension-collaboration": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
     "@tiptap/extension-table": "^3.31.3",
@@ -27,7 +28,8 @@
     "lucide-react": "^1.49.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tiptap-pagination-plus": "^3.1.0"
+    "tiptap-pagination-plus": "^3.1.0",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@rolldown/binding-win32-x64-msvc": "^1.2.11",

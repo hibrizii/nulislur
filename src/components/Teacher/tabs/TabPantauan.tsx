@@ -51,7 +51,12 @@ export const TabPantauan: React.FC<TabPantauanProps> = ({
     const live = liveMap[s.username];
     const isOnline = Boolean(live?.isOnline);
     const isMelanggar = (live?.pelanggaranCount || 0) > 0 || live?.sedangKeluarTab;
-    const isMengetik = isOnline && live?.aktivitas?.toLowerCase().includes('menulis');
+    const isMengetik = isOnline && (
+      live?.aktivitas?.toLowerCase().includes('menulis') ||
+      live?.aktivitas?.toLowerCase().includes('mengerjakan') ||
+      live?.aktivitas?.toLowerCase().includes('mengetik') ||
+      Boolean(live?.docAktifId)
+    );
 
     if (statusFilter === 'online') return isOnline;
     if (statusFilter === 'mengetik') return isMengetik;
@@ -67,7 +72,12 @@ export const TabPantauan: React.FC<TabPantauanProps> = ({
   const typingCount = students.filter((s) => {
     const live = liveMap[s.username];
     const isOnline = Boolean(live?.isOnline);
-    return isOnline && live?.aktivitas?.toLowerCase().includes('menulis');
+    return isOnline && (
+      live?.aktivitas?.toLowerCase().includes('menulis') ||
+      live?.aktivitas?.toLowerCase().includes('mengerjakan') ||
+      live?.aktivitas?.toLowerCase().includes('mengetik') ||
+      Boolean(live?.docAktifId)
+    );
   }).length;
 
   const violationCount = students.reduce((acc, s) => {
@@ -96,7 +106,7 @@ export const TabPantauan: React.FC<TabPantauanProps> = ({
               onClick={() => setStatusFilter('semua')}
               className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 statusFilter === 'semua'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xs'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-2xs'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700'
               }`}
             >

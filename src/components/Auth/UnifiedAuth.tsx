@@ -242,7 +242,7 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({ onAuthSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-3.5 mt-2 text-sm font-semibold cursor-pointer shadow-xs"
+              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-3.5 mt-2 text-sm font-semibold cursor-pointer shadow-xs"
             >
               {loading ? 'Memeriksa...' : 'Masuk'} <ArrowRight size={16} />
             </button>
@@ -342,7 +342,7 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({ onAuthSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-3.5 mt-2 text-sm font-semibold cursor-pointer shadow-xs"
+              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-3.5 mt-2 text-sm font-semibold cursor-pointer shadow-xs"
             >
               {loading ? 'Mendaftarkan...' : 'Daftar Akun'} <Sparkles size={16} />
             </button>

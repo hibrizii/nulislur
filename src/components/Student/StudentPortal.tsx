@@ -245,7 +245,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({ user, onLogout }) 
                 <button
                   type="submit"
                   disabled={isJoining}
-                  className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-2.5 font-semibold cursor-pointer"
+                  className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-2.5 font-semibold cursor-pointer"
                 >
                   {isJoining ? 'Menghubungkan...' : 'Gabung Kelas'}
                 </button>

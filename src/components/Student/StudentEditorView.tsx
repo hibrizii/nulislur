@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataService } from '../../services/dataService';
+import { DataService, stringToColor, getWaktuSekarang } from '../../services/dataService';
 import type { Dokumen } from '../../types';
 import { NulisEditor, type HoverFeedbackData } from '../Editor/NulisEditor';
 import { NeoModal } from '../Common/NeoModal';
 import { ThemeToggle } from '../Common/ThemeToggle';
 import { exportToPdf, exportToWord } from '../../utils/exportDocument';
 import { RevisionChecklistDrawer } from './RevisionChecklistDrawer';
+import { initCollabSession, type CollabPeer, type CollabSession } from '../../services/collabService';
+import { KelolaKolaboratorModal } from './KelolaKolaboratorModal';
+import { RiwayatCadanganModal, type DocumentSnapshot } from './RiwayatCadanganModal';
 import { 
   ArrowLeft, 
   CheckCircle, 
@@ -16,7 +19,10 @@ import {
   X,
   CheckCheck,
   Printer,
-  FileText
+  FileText,
+  Users,
+  Lock,
+  History,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -40,7 +46,16 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
   const [hoverFeedback, setHoverFeedback] = useState<HoverFeedbackData | null>(null);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState<boolean>(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [checklistVersion, setChecklistVersion] = useState(0);
+
+  // State Kolaborasi Multi-Siswa
+  const [onlinePeers, setOnlinePeers] = useState<CollabPeer[]>([]);
+  const [collabSession, setCollabSession] = useState<CollabSession | null>(null);
+  const [isCollabModalOpen, setIsCollabModalOpen] = useState(false);
+
+  const docRef = useRef<Dokumen | null>(null);
+  docRef.current = doc;
 
   useEffect(() => {
     const handleChecklistChange = () => setChecklistVersion((v) => v + 1);
@@ -54,8 +69,11 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
   const lastEditTimeRef = useRef<number>(0);
   const lastLocalJudulRef = useRef<string>('');
   const lastTitleEditTimeRef = useRef<number>(0);
+  const lastSnapshotTimeRef = useRef<number>(Date.now());
+  const lastSnapshotWordCountRef = useRef<number>(0);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirtyRef = useRef<boolean>(false);
+  const lastAktivitasUpdateRef = useRef<number>(0);
   const onBackToLobbyRef = useRef(onBackToLobby);
   onBackToLobbyRef.current = onBackToLobby;
 
@@ -214,16 +232,44 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         lastLocalJudulRef.current = resolvedJudul;
       }
 
-      // Jangan menimpa teks jika siswa sedang mengetik atau sedang dirty
-      const isRecentlyEditingTeks = Date.now() - lastEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTeks && !isDirtyRef.current && resolvedTeks !== lastLocalTeksRef.current) {
-        setTeks(resolvedTeks);
-        lastLocalTeksRef.current = resolvedTeks;
+      // Jangan menimpa teks jika siswa sedang mengetik atau sedang dirty.
+      // PENTING: Pada dokumen kolaborasi, teks disinkronkan langsung secara real-time via CRDT Yjs.
+      // Dilarang keras menimpa teks editor dari snapshot database agar kursor rekan tidak melompat!
+      const isCollab = Boolean(data.isKolaboratif || (data.kolaborator && data.kolaborator.length > 0));
+      if (!isCollab) {
+        const isRecentlyEditingTeks = Date.now() - lastEditTimeRef.current < 3000;
+        if (!isRecentlyEditingTeks && !isDirtyRef.current && resolvedTeks !== lastLocalTeksRef.current) {
+          setTeks(resolvedTeks);
+          lastLocalTeksRef.current = resolvedTeks;
+        }
+      }
+
+      // Inisialisasi pelacak kata riwayat jika belum ada
+      if (typeof window !== 'undefined' && docId && resolvedTeks && resolvedTeks.length > 20) {
+        try {
+          const rawHist = localStorage.getItem(`nulislur_history_${docId}`);
+          const clean = resolvedTeks.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const words = clean ? clean.split(/\s+/).filter(Boolean).length : 0;
+          lastSnapshotWordCountRef.current = words;
+          if (!rawHist) {
+            const initialSnap: DocumentSnapshot = {
+              id: `init_${Date.now()}`,
+              timestamp: Date.now(),
+              waktu: getWaktuSekarang(),
+              judul: resolvedJudul || 'Tanpa Judul',
+              teks: resolvedTeks,
+              wordCount: words,
+              charCount: clean.length,
+              trigger: 'auto',
+            };
+            localStorage.setItem(`nulislur_history_${docId}`, JSON.stringify([initialSnap]));
+          }
+        } catch {}
       }
 
       DataService.updateAktivitas(
         username,
-        `Mengerjakan: ${resolvedJudul || 'Tanpa Judul'}`,
+        `Menulis: ${resolvedJudul || 'Tanpa Judul'}`,
         docId
       );
     });
@@ -238,6 +284,55 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     };
   }, [docId, username]);
 
+  const isCollabDoc = Boolean(doc?.isKolaboratif || (doc?.kolaborator && doc.kolaborator.length > 0));
+  const isPembuatNaskah = doc ? (doc.username ? doc.username === username : doc.nama === _namaSiswa) : true;
+
+  // Sesi Kolaborasi Real-Time berbasis Yjs CRDT + Awareness (Conflict-Free & Kursor Stabil)
+  useEffect(() => {
+    if (!docId || !isCollabDoc) {
+      setCollabSession(null);
+      return;
+    }
+
+    let isSubscribed = true;
+    let activeSession: CollabSession | null = null;
+
+    initCollabSession(
+      docId,
+      {
+        username,
+        nama: _namaSiswa,
+        warna: stringToColor(username),
+      },
+      {
+        onPeersChange: (peers) => {
+          if (isSubscribed) setOnlinePeers(peers);
+        },
+        onTitleChange: (newTitle) => {
+          if (isSubscribed) {
+            setJudul(newTitle);
+            lastLocalJudulRef.current = newTitle;
+          }
+        },
+      }
+    ).then((session) => {
+      if (isSubscribed) {
+        activeSession = session;
+        setCollabSession(session);
+      } else {
+        session.destroy();
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      if (activeSession) {
+        activeSession.destroy();
+      }
+      setCollabSession(null);
+    };
+  }, [docId, isCollabDoc, username, _namaSiswa]);
+
   // Debounced title update
   const handleTitleChange = (newTitle: string) => {
     if (newTitle.length > 100) return;
@@ -247,9 +342,24 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     setJudul(newTitle);
     setSaveStatus('saving');
 
+    if (collabSession) {
+      collabSession.broadcastTitleChange(newTitle);
+    }
+
+    const now = Date.now();
+    if (now - lastAktivitasUpdateRef.current > 4000) {
+      lastAktivitasUpdateRef.current = now;
+      DataService.updateAktivitas(
+        username,
+        `Menulis: ${newTitle || 'Tanpa Judul'}`,
+        docId
+      );
+    }
+
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     titleTimerRef.current = setTimeout(async () => {
-      if (doc && doc.status === 'Draf') {
+      const currentDoc = docRef.current;
+      if (currentDoc && currentDoc.status === 'Draf') {
         await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current);
         setSaveStatus('saved');
         isDirtyRef.current = false;
@@ -265,7 +375,17 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     setTeks(html);
     setSaveStatus('saving');
 
-    // Simpan snapshot lokal darurat seketika
+    const now = Date.now();
+    if (now - lastAktivitasUpdateRef.current > 4000) {
+      lastAktivitasUpdateRef.current = now;
+      DataService.updateAktivitas(
+        username,
+        `Menulis: ${lastLocalJudulRef.current || 'Tanpa Judul'}`,
+        docId
+      );
+    }
+
+    // Simpan snapshot lokal darurat seketika (0ms delay)
     try {
       localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
         judul: lastLocalJudulRef.current,
@@ -274,14 +394,70 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       }));
     } catch {}
 
+    // Rolling Version History: Simpan checkpoint setiap 3 menit atau jika delta kata >= 30 kata
+    const clean = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const currentWordCount = clean ? clean.split(/\s+/).filter(Boolean).length : 0;
+    const timeDelta = now - lastSnapshotTimeRef.current;
+    const wordDelta = Math.abs(currentWordCount - lastSnapshotWordCountRef.current);
+
+    if ((timeDelta > 3 * 60 * 1000 && wordDelta >= 5) || wordDelta >= 30) {
+      lastSnapshotTimeRef.current = now;
+      lastSnapshotWordCountRef.current = currentWordCount;
+      try {
+        const rawHistory = localStorage.getItem(`nulislur_history_${docId}`);
+        const historyList: DocumentSnapshot[] = rawHistory ? JSON.parse(rawHistory) : [];
+        historyList.unshift({
+          id: `auto_${now}`,
+          timestamp: now,
+          waktu: getWaktuSekarang(),
+          judul: lastLocalJudulRef.current || 'Tanpa Judul',
+          teks: html,
+          wordCount: currentWordCount,
+          charCount: clean.length,
+          trigger: 'auto',
+        });
+        localStorage.setItem(`nulislur_history_${docId}`, JSON.stringify(historyList.slice(0, 30)));
+      } catch {}
+    }
+
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
-      if (doc && doc.status === 'Draf') {
+      const currentDoc = docRef.current;
+      if (currentDoc && currentDoc.status === 'Draf') {
         await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html);
+        if (collabSession) {
+          const yjsState = collabSession.getYjsState();
+          await DataService.saveYjsDocState(docId, yjsState);
+        }
         setSaveStatus('saved');
         isDirtyRef.current = false;
       }
     }, 600);
+  };
+
+  // Handler Pemulihan Snapshot Cadangan (Disaster Recovery Rollback)
+  const handleRestoreSnapshot = (snap: DocumentSnapshot) => {
+    setJudul(snap.judul);
+    setTeks(snap.teks);
+    lastLocalJudulRef.current = snap.judul;
+    lastLocalTeksRef.current = snap.teks;
+    isDirtyRef.current = true;
+
+    // Trigger pemulihan teks di NulisEditor secara instan
+    window.dispatchEvent(
+      new CustomEvent('nulislur_restore_editor_content', {
+        detail: { docId, html: snap.teks },
+      })
+    );
+
+    // Segera simpan naskah yang dipulihkan ke database dan Yjs
+    DataService.simpanDokumen(docId, snap.judul, snap.teks);
+    if (collabSession) {
+      collabSession.broadcastTitleChange(snap.judul);
+      DataService.saveYjsDocState(docId, collabSession.getYjsState());
+    }
+    setSaveStatus('saved');
+    isDirtyRef.current = false;
   };
 
   // Handler Kembali dengan Flush Auto-Save Seketika (HANYA jika user benar-benar mengedit)
@@ -300,6 +476,9 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       if (hasContent || doc.teks === '<p></p>' || doc.teks === '<p><br></p>') {
         try {
           await DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current);
+          if (collabSession) {
+            await DataService.saveYjsDocState(docId, collabSession.getYjsState());
+          }
           isDirtyRef.current = false;
         } catch (e) {
           console.warn('Gagal flush draf siswa:', e);
@@ -311,6 +490,11 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
 
   // Kumpulkan tugas
   const handleKumpulkan = async () => {
+    if (!isPembuatNaskah) {
+      alert('Hanya pembuat naskah yang berhak mengumpulkan tugas ke guru.');
+      return;
+    }
+
     if (!judul.trim() || teks === '<p></p>' || teks === '<p><br></p>' || !teks.trim()) {
       alert('Judul dan isi tulisan tidak boleh kosong!');
       return;
@@ -347,7 +531,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
   if (!doc) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="editorial-card p-6 bg-white font-medium text-sm text-stone-500">
+        <div className="editorial-card p-6 bg-white dark:bg-stone-900 font-medium text-sm text-stone-500 dark:text-stone-400">
           Memuat dokumen...
         </div>
       </div>
@@ -373,17 +557,29 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         </button>
 
         <div className="flex items-center gap-3">
-          {/* Status Simpan Otomatis */}
-          <div className="flex items-center gap-2 text-xs font-medium text-stone-500 dark:text-stone-400">
-            {saveStatus === 'saving' ? (
-              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                <CloudUpload size={15} /> Menyimpan...
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                <CloudCheck size={15} /> Tersimpan
-              </span>
-            )}
+          {/* Status Simpan Otomatis & Tombol Riwayat Cadangan */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-stone-500 dark:text-stone-400">
+              {saveStatus === 'saving' ? (
+                <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <CloudUpload size={15} /> Menyimpan...
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <CloudCheck size={15} /> Tersimpan
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsHistoryModalOpen(true)}
+              className="editorial-btn bg-stone-50 hover:bg-stone-100 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 py-1 px-2 text-xs flex items-center gap-1.5 rounded-lg cursor-pointer transition-colors shadow-2xs"
+              title="Buka Riwayat Cadangan & Titik Pemulihan Naskah (Disaster Recovery)"
+            >
+              <History size={13} className="text-purple-600 dark:text-purple-400" />
+              <span className="font-semibold text-[11px] hidden sm:inline">Riwayat Cadangan</span>
+            </button>
           </div>
 
           {/* Tombol Pop-Up Catatan Revisi Siswa (Jika Ada Catatan) */}
@@ -414,6 +610,46 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
             )}
           </div>
 
+          {/* Tombol Rekan Kolaborasi */}
+          {isCollabDoc && (
+            <button
+              type="button"
+              onClick={() => setIsCollabModalOpen(true)}
+              className="editorial-btn bg-stone-50 hover:bg-stone-100 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 py-1 px-2.5 text-xs flex items-center gap-2 rounded-lg cursor-pointer transition-colors shadow-2xs"
+              title="Kelola Kolaborator Naskah"
+            >
+              <div className="flex -space-x-1.5 items-center">
+                <div
+                  className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
+                  style={{ backgroundColor: stringToColor(doc.username) }}
+                  title={`Pembuat: ${doc.nama}`}
+                >
+                  {doc.nama.charAt(0).toUpperCase()}
+                </div>
+                {(doc.kolaborator || []).map((k) => (
+                  <div
+                    key={k.username}
+                    className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
+                    style={{ backgroundColor: k.warna || stringToColor(k.username) }}
+                    title={`Kolaborator: ${k.nama}`}
+                  >
+                    {k.nama.charAt(0).toUpperCase()}
+                  </div>
+                ))}
+              </div>
+              <span className="font-semibold text-[11px] flex items-center gap-1">
+                <Users size={12} className="text-purple-600 dark:text-purple-400" />
+                {(doc.kolaborator?.length || 0) + 1} Penulis
+              </span>
+              {onlinePeers.length > 1 && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {onlinePeers.length} aktif
+                </span>
+              )}
+            </button>
+          )}
+
           <ThemeToggle />
         </div>
       </header>
@@ -439,7 +675,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
             <button
               type="button"
               onClick={() => setIsFeedbackModalOpen(true)}
-              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-2 px-3.5 shadow-xs cursor-pointer flex items-center gap-1.5 font-semibold"
+              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-2 px-3.5 shadow-xs cursor-pointer flex items-center gap-1.5 font-semibold"
             >
               <CheckCheck size={13} />
               <span>Daftar Periksa Revisi</span>
@@ -464,36 +700,60 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
           </div>
 
           {/* Tiptap Rich-Text Editor */}
-          <NulisEditor
-            initialContent={teks}
-            initialLayoutMode={doc?.layoutMode || (typeof window !== 'undefined' ? (localStorage.getItem('nulislur_layout_mode') as 'web' | 'kertas') : null) || 'kertas'}
-            onLayoutModeChange={(mode) => {
-              if (docId) {
-                DataService.updateLayoutModeDokumen(docId, mode);
-              }
-            }}
-            readOnly={!isDraf}
-            isTeacher={false}
-            blockCopyPaste={isDraf}
-            onUpdate={handleEditorUpdate}
-            onHoverFeedback={handleHoverFeedback}
-            placeholder="Tulis di sini..."
-          />
+          {isCollabDoc && !collabSession ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-3 text-stone-500 dark:text-stone-400">
+              <div className="w-8 h-8 border-3 border-stone-300 dark:border-stone-700 border-t-purple-600 rounded-full animate-spin" />
+              <p className="text-xs font-serif-literary tracking-wide">Menghubungkan ruang kolaborasi naskah...</p>
+            </div>
+          ) : (
+            <NulisEditor
+              key={docId + '_' + (isCollabDoc ? 'collab' : 'solo')}
+              docId={docId}
+              initialContent={teks}
+              initialLayoutMode={doc?.layoutMode || (typeof window !== 'undefined' ? (localStorage.getItem('nulislur_layout_mode') as 'web' | 'kertas') : null) || 'kertas'}
+              onLayoutModeChange={(mode) => {
+                if (docId) {
+                  DataService.updateLayoutModeDokumen(docId, mode);
+                }
+              }}
+              readOnly={!isDraf}
+              isTeacher={false}
+              blockCopyPaste={isDraf}
+              onUpdate={handleEditorUpdate}
+              onHoverFeedback={handleHoverFeedback}
+              placeholder="Tulis di sini..."
+              collabSession={collabSession}
+            />
+          )}
         </div>
 
         {/* Tombol Aksi Bawah: Siswa meninjau naskah secara penuh sebelum submit */}
         <div className="mt-4 flex flex-col gap-3">
           {isDraf ? (
             <div className="p-6 sm:p-8 bg-stone-50 dark:bg-stone-900/60 rounded-2xl border border-stone-200/80 dark:border-stone-800 flex flex-col items-center text-center">
-              <p className="text-xs text-stone-600 dark:text-stone-400 mb-4 max-w-md leading-relaxed">
-                Sudah memeriksa naskah tulisan dari awal hingga akhir? Jika sudah yakin, kumpulkan tugas untuk diperiksa oleh gurumu.
-              </p>
-              <button
-                onClick={() => setIsSubmitModalOpen(true)}
-                className="editorial-btn w-full sm:w-auto px-8 py-3.5 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-sm font-bold shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-transform active:scale-98"
-              >
-                <CheckCircle size={18} /> Kumpulkan Tugas
-              </button>
+              {isPembuatNaskah ? (
+                <>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 mb-4 max-w-md leading-relaxed">
+                    Sudah memeriksa naskah tulisan dari awal hingga akhir? Jika sudah yakin, kumpulkan tugas untuk diperiksa oleh gurumu.
+                  </p>
+                  <button
+                    onClick={() => setIsSubmitModalOpen(true)}
+                    className="editorial-btn w-full sm:w-auto px-8 py-3.5 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-sm font-bold shadow-sm rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-transform active:scale-98"
+                  >
+                    <CheckCircle size={18} /> Kumpulkan Tugas
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 mb-3 max-w-md leading-relaxed">
+                    Naskah ini adalah tulisan kolaborasi. Pengumpulan tugas ke guru akan dilakukan oleh pembuat naskah ({doc.nama}).
+                  </p>
+                  <div className="px-6 py-3 bg-stone-100 dark:bg-stone-800/80 text-stone-500 dark:text-stone-400 text-xs font-semibold rounded-xl border border-stone-200 dark:border-stone-700 flex items-center gap-2 cursor-not-allowed select-none">
+                    <Lock size={15} className="text-stone-400" />
+                    <span>Hanya Pembuat Naskah yang Mengumpulkan</span>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -511,7 +771,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
                   <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-3.5 text-sm font-semibold rounded-xl shadow-xs cursor-pointer"
+                    className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-3.5 text-sm font-semibold rounded-xl shadow-xs cursor-pointer"
                   >
                     <Printer size={16} /> Unduh Naskah (PDF)
                   </button>
@@ -595,6 +855,25 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         confirmColor="#1C1917"
         onConfirm={handleKumpulkan}
         onCancel={() => setIsSubmitModalOpen(false)}
+      />
+
+      {/* Modal Kelola Kolaborator Naskah */}
+      <KelolaKolaboratorModal
+        isOpen={isCollabModalOpen}
+        onClose={() => setIsCollabModalOpen(false)}
+        doc={doc}
+        currentUsername={username}
+        kodeKelas={doc.kodeKelas}
+      />
+
+      {/* Modal Riwayat Cadangan Naskah (Disaster Recovery & Rolling History) */}
+      <RiwayatCadanganModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        docId={docId}
+        currentJudul={judul}
+        currentTeks={teks}
+        onRestore={handleRestoreSnapshot}
       />
     </div>
   );

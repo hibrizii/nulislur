@@ -4,6 +4,9 @@ import { Extension, Node as TipTapNode, mergeAttributes, textInputRule } from '@
 import { Plugin, PluginKey, TextSelection, NodeSelection, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
+import Collaboration, { isChangeOrigin } from '@tiptap/extension-collaboration';
+import { yCursorPlugin } from '@tiptap/y-tiptap';
+import type { CollabSession } from '../../services/collabService';
 import Paragraph from '@tiptap/extension-paragraph';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -1690,6 +1693,56 @@ const AutoPagination = Extension.create<AutoPaginationOptions>({
   },
 });
 
+export interface RemoteCursorData {
+  username: string;
+  nama: string;
+  warna: string;
+  from: number;
+  to: number;
+  updatedAt: number;
+}
+
+export const CollaborationCursor = Extension.create<{ awareness: any }>({
+  name: 'collaborationCursor',
+  addOptions() {
+    return {
+      awareness: null,
+    };
+  },
+  addProseMirrorPlugins() {
+    if (!this.options.awareness) {
+      return [];
+    }
+    return [
+      yCursorPlugin(this.options.awareness, {
+        cursorBuilder: (user: any) => {
+          const cursor = document.createElement('span');
+          cursor.classList.add('collaboration-cursor__caret');
+          cursor.style.borderColor = user.color || '#2563EB';
+
+          const label = document.createElement('span');
+          label.classList.add('collaboration-cursor__label');
+          label.style.backgroundColor = user.color || '#2563EB';
+          label.textContent = user.name || 'Kolaborator';
+
+          const space1 = document.createTextNode('\u2060');
+          const space2 = document.createTextNode('\u2060');
+          cursor.appendChild(space1);
+          cursor.appendChild(label);
+          cursor.appendChild(space2);
+          return cursor;
+        },
+        selectionBuilder: (user: any) => {
+          return {
+            style: `background-color: ${user.color || '#2563EB'}33;`,
+            class: 'ProseMirror-yjs-selection remote-selection',
+          };
+        },
+      }),
+    ];
+  },
+});
+
 const sanitizeContent = (html?: string) => {
   if (!html || html === '<p><br></p>') return '<p></p>';
   return html.replace(/&amp;nbsp;/g, '\u00a0');
@@ -1892,7 +1945,8 @@ export interface HoverFeedbackData {
   };
 }
 
-interface NulisEditorProps {
+export interface NulisEditorProps {
+  docId?: string;
   initialContent: string;
   readOnly?: boolean;
   isTeacher?: boolean;
@@ -1902,9 +1956,15 @@ interface NulisEditorProps {
   placeholder?: string;
   initialLayoutMode?: 'web' | 'kertas';
   onLayoutModeChange?: (mode: 'web' | 'kertas') => void;
+  collabSession?: CollabSession | null;
+  remoteContent?: string;
+  remoteCursors?: Record<string, RemoteCursorData>;
+  onCursorMove?: (cursor: { from: number; to: number }) => void;
+  ydoc?: any;
 }
 
 export const NulisEditor: React.FC<NulisEditorProps> = ({
+  docId,
   initialContent,
   readOnly = false,
   isTeacher = false,
@@ -1914,15 +1974,32 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
   placeholder = 'Tulis di sini...',
   initialLayoutMode,
   onLayoutModeChange,
+  collabSession,
+  remoteContent: _remoteContent,
+  remoteCursors: _remoteCursors,
+  onCursorMove,
+  ydoc: _ydoc,
 }) => {
   const [selectedText, setSelectedText] = useState<string>('');
   const [showTeacherCommentModal, setShowTeacherCommentModal] = useState<boolean>(false);
+  const [teacherSelectionRect, setTeacherSelectionRect] = useState<{
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [, setToolbarTick] = useState<number>(0);
   const [commentText, setCommentText] = useState<string>('');
   const [cachedSelection, setCachedSelection] = useState<{ from: number; to: number } | null>(null);
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+
+  const onCursorMoveRef = useRef(onCursorMove);
+  onCursorMoveRef.current = onCursorMove;
 
   // State Slash Command (/) Rubrik Guru
   const [selectedTeacherTags, setSelectedTeacherTags] = useState<string[]>([]);
@@ -1941,6 +2018,30 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       opt.keywords.some((kw) => kw.includes(q))
     );
   }, [teacherSlashQuery]);
+
+  // Posisi floating modal pemberian feedback guru tepat di dekat teks yang diseleksi
+  const teacherCommentCoords = useMemo(() => {
+    if (!teacherSelectionRect) return null;
+    const { top, bottom, left, width } = teacherSelectionRect;
+    const modalWidth = 360;
+    const modalHeight = teacherSlashOpen ? 340 : 230;
+
+    // Cek ketersediaan ruang di atas teks
+    const spaceAbove = top;
+    const isAbove = spaceAbove >= modalHeight + 16;
+
+    const targetTop = isAbove ? top - 8 : bottom + 8;
+    const selectionCenter = left + width / 2;
+    const targetLeft = Math.max(16, Math.min(selectionCenter - modalWidth / 2, window.innerWidth - modalWidth - 16));
+    const notchLeft = Math.max(16, Math.min(selectionCenter - targetLeft, modalWidth - 16));
+
+    return {
+      top: targetTop,
+      left: targetLeft,
+      isAbove,
+      notchLeft,
+    };
+  }, [teacherSelectionRect, teacherSlashOpen]);
 
   // Active Mark Feedback (saat guru mengklik highlight yang sudah ada)
   const [activeMarkFeedback, setActiveMarkFeedback] = useState<{
@@ -2195,6 +2296,34 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       } else {
         curEditor.chain().focus().setCellAttribute('backgroundColor', color).run();
       }
+    }
+  };
+
+  // Update posisi toolbar tabel mengambang agar selalu melekat di atas tabel aktif
+  const updateActiveTablePos = () => {
+    const curEditor = editorRef.current;
+    if (!curEditor || !curEditor.isActive('table') || readOnly) {
+      setActiveTableCoords(null);
+      setShowTableColorMenu(false);
+      return;
+    }
+    try {
+      const { from } = curEditor.state.selection;
+      const dom = curEditor.view.domAtPos(from);
+      const cellEl = (dom.node instanceof HTMLElement ? dom.node : dom.node.parentElement)?.closest('td, th');
+      const tableEl = cellEl?.closest('table') || curEditor.view.dom.querySelector('.tiptap table:focus-within, .tiptap table');
+      if (tableEl) {
+        const rect = tableEl.getBoundingClientRect();
+        // Selalu tampil mengambang di atas tabel, dan menempel di batas atas (sticky 68px) saat pengguna scroll melewati bagian atas tabel
+        const top = Math.max(68, rect.top - 46);
+        const left = Math.max(16, Math.min(window.innerWidth - 560, rect.left));
+        setActiveTableCoords({ top, left });
+      } else {
+        setActiveTableCoords({ top: 68, left: 16 });
+      }
+    } catch {
+      setActiveTableCoords(null);
+      setShowTableColorMenu(false);
     }
   };
 
@@ -2693,6 +2822,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
         paragraph: false,
         orderedList: false, // Unified numbering sistem menangani angka secara mulus di paragraf
         heading: { levels: [1, 2, 3] },
+        undoRedo: collabSession ? false : undefined,
       }),
       CustomParagraph,
       FootnoteNode,
@@ -2757,8 +2887,16 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
           }
         },
       }),
+      ...(collabSession ? [
+        Collaboration.configure({
+          document: collabSession.ydoc,
+        }),
+        CollaborationCursor.configure({
+          awareness: collabSession.awareness,
+        }),
+      ] : []),
     ],
-    content: sanitizeContent(initialContent),
+    content: collabSession?.hasExistingContent ? undefined : sanitizeContent(initialContent),
     editable: !readOnly,
     editorProps: {
       attributes: {
@@ -3235,12 +3373,32 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               setTeacherSlashOpen(false);
               setTeacherSlashQuery('');
               setTeacherSlashSelectedIndex(0);
+
+              try {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                  const range = sel.getRangeAt(0);
+                  const rect = range.getBoundingClientRect();
+                  setTeacherSelectionRect({
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    left: rect.left,
+                    right: rect.right,
+                    width: rect.width,
+                    height: rect.height,
+                  });
+                }
+              } catch {}
+
               setShowTeacherCommentModal(true);
             }
           }
           return false;
         }
       },
+    },
+    onTransaction: () => {
+      setToolbarTick((t) => t + 1);
     },
     onCreate: ({ editor }) => {
       updateTocHeadings(editor);
@@ -3251,7 +3409,10 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       }
     },
     onSelectionUpdate: ({ editor }) => {
+      setToolbarTick((t) => t + 1);
       const from = editor.state.selection.from;
+      const to = editor.state.selection.to;
+      onCursorMoveRef.current?.({ from, to });
       let p = 1;
       const bps = paginationDataRef.current.breakPoints || [];
       for (const bp of bps) {
@@ -3264,14 +3425,20 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       setActivePage(Math.min(p, Math.max(1, paginationDataRef.current.totalPages)));
       updateActiveTablePos();
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
       let html = editor.getHTML();
       if (html.includes('--')) {
         html = html.replace(/--/g, '—');
       }
 
-      lastEmittedHtmlRef.current = html;
-      onUpdateRef.current?.(html);
+      const isRemote = Boolean(collabSession && transaction && isChangeOrigin(transaction));
+
+      // HANYA teruskan onUpdate ke parent (auto-save dokumen) jika transaksi berasal dari ketikan lokal!
+      if (!isRemote) {
+        lastEmittedHtmlRef.current = html;
+        onUpdateRef.current?.(html);
+      }
+
       updateFootnotesList();
       updateTocHeadings(editor);
       const found = checkForDocToc(editor);
@@ -3281,9 +3448,9 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       }
       updateActiveTablePos();
 
-      // Fleksibel seperti sebelumnya: Kursor bebas bergerak di seluruh layar tanpa terkunci di tengah.
-      // Hanya scroll jika kursor melewati batas bawah layar, menggunakan behavior: 'auto' (0ms) bebas getaran.
-      if (!readOnly && editor.view) {
+      // HANYA auto-scroll jika pengguna lokal yang mengetik dan sedang fokus di editor!
+      // JANGAN PERNAH scroll layar saat perubahan berasal dari rekan kolaborator di halaman lain!
+      if (!readOnly && editor.view && !isRemote && editor.isFocused) {
         try {
           const { from } = editor.state.selection;
           const coords = editor.view.coordsAtPos(from);
@@ -3301,18 +3468,20 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       const stats = computeDocumentStats(editor.state.doc);
       setEditorStats((prev) => (prev.words === stats.words && prev.characters === stats.characters ? prev : stats));
 
-      // Update posisi halaman aktif
-      const from = editor.state.selection.from;
-      let p = 1;
-      const bps = paginationDataRef.current.breakPoints || [];
-      for (const bp of bps) {
-        if (from >= bp.offset) {
-          p = bp.toPage;
-        } else {
-          break;
+      // Update posisi halaman aktif lokal HANYA jika bukan perubahan remote
+      if (!isRemote) {
+        const from = editor.state.selection.from;
+        let p = 1;
+        const bps = paginationDataRef.current.breakPoints || [];
+        for (const bp of bps) {
+          if (from >= bp.offset) {
+            p = bp.toPage;
+          } else {
+            break;
+          }
         }
+        setActivePage(Math.min(p, Math.max(1, paginationDataRef.current.totalPages)));
       }
-      setActivePage(Math.min(p, Math.max(1, paginationDataRef.current.totalPages)));
 
       // Deteksi Slash Command (/) saat mengetik
       if (!readOnly && !isTeacher) {
@@ -3364,6 +3533,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
   editorRef.current = editor;
 
+
   // Sinkronisasi nomor halaman heading saat auto-pagination selesai menghitung
   useEffect(() => {
     if (editorRef.current) {
@@ -3391,34 +3561,6 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       }
     } catch (err) {
       console.error('Gagal melompat ke bab:', err);
-    }
-  };
-
-  // Update posisi toolbar tabel mengambang agar selalu melekat di atas tabel aktif
-  const updateActiveTablePos = () => {
-    const curEditor = editorRef.current;
-    if (!curEditor || !curEditor.isActive('table') || readOnly) {
-      setActiveTableCoords(null);
-      setShowTableColorMenu(false);
-      return;
-    }
-    try {
-      const { from } = curEditor.state.selection;
-      const dom = curEditor.view.domAtPos(from);
-      const cellEl = (dom.node instanceof HTMLElement ? dom.node : dom.node.parentElement)?.closest('td, th');
-      const tableEl = cellEl?.closest('table') || curEditor.view.dom.querySelector('.tiptap table:focus-within, .tiptap table');
-      if (tableEl) {
-        const rect = tableEl.getBoundingClientRect();
-        // Selalu tampil mengambang di atas tabel, dan menempel di batas atas (sticky 68px) saat pengguna scroll melewati bagian atas tabel
-        const top = Math.max(68, rect.top - 46);
-        const left = Math.max(16, Math.min(window.innerWidth - 560, rect.left));
-        setActiveTableCoords({ top, left });
-      } else {
-        setActiveTableCoords({ top: 68, left: 16 });
-      }
-    } catch {
-      setActiveTableCoords(null);
-      setShowTableColorMenu(false);
     }
   };
 
@@ -3690,6 +3832,9 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
   // atau saat berpindah layout / kehilangan fokus sementara
   useEffect(() => {
     if (!editor) return;
+    // PENTING: Pada sesi kolaborasi, Yjs mengelola teks secara langsung.
+    // Dilarang keras memanggil setContent saat collabSession aktif karena akan merusak DOM dan kursor!
+    if (collabSession) return;
     if (initialContent === lastEmittedHtmlRef.current) return;
     if (editor.isFocused) return;
     const clean = sanitizeContent(initialContent);
@@ -3706,13 +3851,32 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       lastEmittedHtmlRef.current = clean;
       editor.commands.setContent(clean, { emitUpdate: false });
     }
-  }, [initialContent, editor]);
+  }, [initialContent, editor, collabSession]);
 
   useEffect(() => {
     if (editor) {
       editor.setEditable(!readOnly);
     }
   }, [readOnly, editor]);
+
+  // Listener untuk Pemulihan Naskah Eksplisit (Disaster Recovery / Rollback dari Riwayat Cadangan)
+  useEffect(() => {
+    const handleExplicitRestore = (e: any) => {
+      if (!editor) return;
+      if (e.detail && (!docId || e.detail.docId === docId) && e.detail.html !== undefined) {
+        const clean = sanitizeContent(e.detail.html);
+        lastEmittedHtmlRef.current = clean;
+        editor.commands.setContent(clean, { emitUpdate: true });
+        setTimeout(() => {
+          updateFootnotesList();
+          const stats = computeDocumentStats(editor.state.doc);
+          setEditorStats(stats);
+        }, 50);
+      }
+    };
+    window.addEventListener('nulislur_restore_editor_content', handleExplicitRestore);
+    return () => window.removeEventListener('nulislur_restore_editor_content', handleExplicitRestore);
+  }, [editor, docId]);
 
   // Sinkronisasi daftar catatan kaki & statistik kata saat konten dimuat
   useEffect(() => {
@@ -3940,6 +4104,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     onUpdateRef.current?.(editor.getHTML());
     window.getSelection()?.removeAllRanges();
     setShowTeacherCommentModal(false);
+    setTeacherSelectionRect(null);
     setCommentText('');
     setSelectedText('');
     setCachedSelection(null);
@@ -3969,6 +4134,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     onUpdateRef.current?.(editor.getHTML());
     window.getSelection()?.removeAllRanges();
     setShowTeacherCommentModal(false);
+    setTeacherSelectionRect(null);
     setCommentText('');
     setSelectedText('');
     setCachedSelection(null);
@@ -3982,6 +4148,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     }
     window.getSelection()?.removeAllRanges();
     setShowTeacherCommentModal(false);
+    setTeacherSelectionRect(null);
     setCommentText('');
     setSelectedText('');
     setCachedSelection(null);
@@ -4199,6 +4366,32 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeMarkFeedback, editSlashOpen]);
+
+  // Tutup modal input feedback guru jika klik di luar atau tekan tombol Escape
+  useEffect(() => {
+    if (!showTeacherCommentModal) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.teacher-comment-modal') && !target.closest('.teacher-feedback-popup') && !target.closest('.ProseMirror')) {
+        handleCloseTeacherModal();
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (teacherSlashOpen) {
+          setTeacherSlashOpen(false);
+          return;
+        }
+        handleCloseTeacherModal();
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showTeacherCommentModal, teacherSlashOpen]);
 
   // Hitung posisi floating popup tepat di dekat mark
   const teacherPopupCoords = useMemo(() => {
@@ -4450,10 +4643,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 p-2 bg-stone-50/95 dark:bg-stone-900/95 backdrop-blur-xs border-b border-stone-200 dark:border-stone-800 rounded-t-xl mb-6 shadow-xs">
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleBold().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('bold')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs font-semibold'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Tebal (Bold)"
@@ -4463,10 +4657,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleItalic().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('italic')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs font-semibold'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Miring (Italic)"
@@ -4476,10 +4671,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleUnderline().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('underline')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs font-semibold'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Garis Bawah (Underline)"
@@ -4492,10 +4688,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
           {/* Quick Headings */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
             className={`px-2 h-8 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
               editor.isActive('heading', { level: 1 })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Judul Utama (H1)"
@@ -4505,10 +4702,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
             className={`px-2 h-8 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
               editor.isActive('heading', { level: 2 })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Sub Judul (H2)"
@@ -4518,10 +4716,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
             className={`px-2 h-8 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
               editor.isActive('heading', { level: 3 })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Sub Judul Kecil (H3)"
@@ -4533,10 +4732,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().setTextAlign('left').run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive({ textAlign: 'left' })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Rata Kiri"
@@ -4546,10 +4746,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().setTextAlign('center').run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive({ textAlign: 'center' })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Rata Tengah"
@@ -4559,10 +4760,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().setTextAlign('justify').run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive({ textAlign: 'justify' })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Rata Kiri Kanan"
@@ -4574,10 +4776,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleBulletList().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('bulletList')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Daftar Poin"
@@ -4587,10 +4790,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('orderedList')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Daftar Angka"
@@ -4600,10 +4804,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('blockquote')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Quote / Kutipan Blok"
@@ -4613,10 +4818,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => toggleHangingIndentHelper(editor.view)}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('paragraph', { hangingIndent: true })
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Indentasi Gantung / Daftar Pustaka (Alt+T / Alt+G / Klik)"
@@ -4626,6 +4832,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={openNewFootnoteModal}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
             title="Tambah Catatan Kaki (Footnote)"
@@ -4636,6 +4843,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
           {/* Tombol Tabel Data */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (editor) {
                 editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -4643,7 +4851,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             }}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               editor.isActive('table')
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Sisipkan Tabel Data (3x3)"
@@ -4656,6 +4864,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
           {/* Tombol Cari & Ganti */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -4663,7 +4872,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             }}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               showFindReplace
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800'
             }`}
             title="Cari & Ganti Teks (Ctrl+F)"
@@ -4738,7 +4947,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               onClick={() => setShowTableColorMenu((prev) => !prev)}
               className={`px-2 py-1 rounded-md font-medium cursor-pointer transition-colors flex items-center gap-1.5 ${
                 showTableColorMenu
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                   : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300'
               }`}
               title="Warna Latar Sel / Baris Tabel"
@@ -4857,7 +5066,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                 zIndex: 48,
                 pointerEvents: 'none',
               }}
-              className="bg-stone-900 dark:bg-stone-100 opacity-60"
+              className="bg-stone-900 dark:bg-amber-400 opacity-60"
             />
           ) : (
             <div
@@ -4870,7 +5079,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                 zIndex: 48,
                 pointerEvents: 'none',
               }}
-              className="bg-stone-900 dark:bg-stone-100 opacity-60"
+              className="bg-stone-900 dark:bg-amber-400 opacity-60"
             />
           )}
 
@@ -4894,7 +5103,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               transform: 'translate(-50%, -50%)',
               zIndex: 60,
             }}
-            className="nulis-table-add-btn w-6 h-6 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center shadow-lg hover:scale-125 transition-transform cursor-pointer border-2 border-white dark:border-stone-900 pointer-events-auto"
+            className="nulis-table-add-btn w-6 h-6 rounded-full bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 flex items-center justify-center shadow-lg hover:scale-125 transition-transform cursor-pointer border-2 border-white dark:border-stone-700 pointer-events-auto"
             title={hoverAddBtn.type === 'col' ? 'Sisipkan kolom di sini' : 'Sisipkan baris di sini'}
           >
             <Plus size={13} strokeWidth={2.5} />
@@ -5015,7 +5224,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                     type="button"
                     onClick={handleReplaceAll}
                     disabled={findMatches.length === 0}
-                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-1.5 px-2.5 rounded-lg font-medium shadow-xs disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-1.5 px-2.5 rounded-lg font-medium shadow-xs disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                     title="Ganti semua kecocokan sekaligus"
                   >
                     Ganti Semua
@@ -5145,14 +5354,14 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                   }}
                   className={`w-full flex items-center gap-2.5 p-2 rounded-lg text-left transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                      ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs'
                       : 'text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800'
                   }`}
                 >
                   <div
                     className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
                       isSelected
-                        ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900'
+                        ? 'bg-stone-800 text-white dark:bg-stone-700 dark:text-amber-400'
                         : 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300'
                     }`}
                   >
@@ -5173,7 +5382,28 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
 
       {/* Floating Popup Komentar Guru saat Guru menyeleksi kata */}
       {isTeacher && showTeacherCommentModal && (
-        <div className="absolute top-16 right-4 z-50 editorial-card p-4 bg-white dark:bg-stone-900 max-w-sm w-full shadow-2xl animate-in zoom-in-95 border border-stone-300 dark:border-stone-700">
+        <div
+          style={{
+            position: 'fixed',
+            top: teacherCommentCoords ? `${teacherCommentCoords.top}px` : '80px',
+            left: teacherCommentCoords ? `${teacherCommentCoords.left}px` : 'calc(50% - 180px)',
+            transform: teacherCommentCoords?.isAbove ? 'translateY(-100%)' : 'none',
+            zIndex: 60,
+          }}
+          className="w-[360px] max-w-[calc(100vw-32px)] editorial-card p-4 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-2xl rounded-2xl animate-in fade-in zoom-in-95 border-2 border-amber-400 dark:border-amber-500 teacher-comment-modal pointer-events-auto"
+        >
+          {/* Segitiga penunjuk arah seleksi */}
+          {teacherCommentCoords && (
+            <div
+              style={{ left: `${teacherCommentCoords.notchLeft}px` }}
+              className={`absolute w-3 h-3 bg-white dark:bg-stone-900 border-amber-400 dark:border-amber-500 transform rotate-45 -translate-x-1/2 pointer-events-none ${
+                teacherCommentCoords.isAbove
+                  ? 'bottom-[-7px] border-b-2 border-r-2 border-t-0 border-l-0'
+                  : 'top-[-7px] border-t-2 border-l-2 border-b-0 border-r-0'
+              }`}
+            />
+          )}
+
           <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-2 mb-3">
             <span className="font-bold text-xs flex items-center gap-1.5 text-stone-800 dark:text-stone-100">
               <MessageSquarePlus size={15} className="text-blue-600 dark:text-blue-400" /> Beri Catatan Koreksi
@@ -5297,7 +5527,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               <div 
                 ref={teacherSlashDropdownRef}
                 onWheel={(e) => e.stopPropagation()}
-                className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl shadow-2xl p-1.5 max-h-56 overflow-y-auto overscroll-contain animate-in zoom-in-95"
+                className={`absolute left-0 right-0 ${
+                  teacherCommentCoords?.isAbove || (teacherCommentCoords && window.innerHeight - teacherCommentCoords.top < 300)
+                    ? 'bottom-full mb-1'
+                    : 'top-full mt-1'
+                } z-50 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl shadow-2xl p-1.5 max-h-56 overflow-y-auto overscroll-contain animate-in zoom-in-95`}
               >
                 <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
                   <span>Pilih Variabel Rubrik (/{teacherSlashQuery})</span>
@@ -5367,7 +5601,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
               <button
                 type="button"
                 onClick={() => applyTeacherComment()}
-                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-1.5 px-3 cursor-pointer font-medium"
+                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-1.5 px-3 cursor-pointer font-medium"
               >
                 Terapkan Catatan
               </button>
@@ -5468,7 +5702,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveFootnote}
-                  className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-2 px-4 font-semibold shadow-xs cursor-pointer"
+                  className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-2 px-4 font-semibold shadow-xs cursor-pointer"
                 >
                   Simpan
                 </button>
@@ -5529,7 +5763,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
                 <button
                   type="button"
                   onClick={insertFrontDocToc}
-                  className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 rounded-lg text-xs font-semibold shrink-0 cursor-pointer shadow-xs transition-colors"
+                  className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 rounded-lg text-xs font-semibold shrink-0 cursor-pointer shadow-xs transition-colors"
                   title="Sisipkan daftar isi otomatis dan pemisah halaman di depan naskah"
                 >
                   + Pasang di Depan
@@ -5606,7 +5840,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             onClick={() => handleLayoutChange('web')}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
               layoutMode === 'web'
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100/80 dark:text-stone-200 dark:hover:text-white dark:hover:bg-stone-800'
             }`}
             title="Tampilan Web (Mengalir)"
@@ -5622,7 +5856,7 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
             onClick={() => handleLayoutChange('kertas')}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
               layoutMode === 'kertas'
-                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-amber-400 dark:border dark:border-stone-700 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100/80 dark:text-stone-200 dark:hover:text-white dark:hover:bg-stone-800'
             }`}
             title="Tampilan Lembaran Kertas (A4)"

@@ -316,7 +316,7 @@ export const RevisionChecklistDrawer: React.FC<RevisionChecklistDrawerProps> = (
           <button
             type="button"
             onClick={onClose}
-            className="editorial-btn w-full sm:w-auto bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 px-4 py-2 text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1.5"
+            className="editorial-btn w-full sm:w-auto bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-4 py-2 text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1.5"
           >
             <X size={14} /> Tutup Panel
           </button>

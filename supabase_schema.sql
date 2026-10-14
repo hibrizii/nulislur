@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS public.dokumen (
     feedback_umum TEXT,
     penulis_kategori TEXT DEFAULT 'Siswa',
     layout_mode TEXT DEFAULT 'kertas',
+    is_kolaboratif BOOLEAN DEFAULT FALSE,
+    kolaborator JSONB DEFAULT '[]'::jsonb,
     waktu_edit TEXT,
     waktu_kumpul TEXT,
     waktu_publish BIGINT,
@@ -60,6 +62,8 @@ ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS judul_tugas TEXT;
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS layout_mode TEXT DEFAULT 'kertas';
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS penulis_kategori TEXT DEFAULT 'Siswa';
 ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS penilaian JSONB DEFAULT NULL;
+ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS is_kolaboratif BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.dokumen ADD COLUMN IF NOT EXISTS kolaborator JSONB DEFAULT '[]'::jsonb;
 
 -- 4. TABEL PENUGASAN (TUGAS TERSTRUKTUR DARI GURU)
 CREATE TABLE IF NOT EXISTS public.penugasan (

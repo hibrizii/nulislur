@@ -561,7 +561,7 @@ export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokume
                   setSelectedDocModal(null);
                   onOpenEditor(id);
                 }}
-                className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 text-xs py-2.5 font-semibold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-xs py-2.5 font-semibold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
               >
                 <FileText size={14} /> Buka Naskah & Lihat Highlight Koreksi
               </button>

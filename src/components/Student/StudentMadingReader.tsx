@@ -408,7 +408,7 @@ export const StudentMadingReader: React.FC<StudentMadingReaderProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-1.5 px-4 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-1.5 px-4 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                   >
                     <Send size={12} /> Kirim
                   </button>

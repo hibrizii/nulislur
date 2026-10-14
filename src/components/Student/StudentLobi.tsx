@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { DataService, getWarnaTopik } from '../../services/dataService';
-import type { Dokumen, Pengumuman, UserAccount, Penugasan, MigrasiRedeemItem } from '../../types';
+import { DataService, getWarnaTopik, stringToColor, getWaktuSekarang } from '../../services/dataService';
+import type { Dokumen, Pengumuman, UserAccount, Penugasan, MigrasiRedeemItem, KolaboratorAnggota } from '../../types';
 import { 
   Plus, 
   LogOut, 
@@ -26,12 +26,14 @@ import {
   User,
   Lock,
   Search,
+  Users,
 } from 'lucide-react';
 import { NeoModal } from '../Common/NeoModal';
 import { ThemeToggle } from '../Common/ThemeToggle';
 import { cleanSnippet } from '../../utils/exportDocument';
 import { StudentGrowthReport } from './StudentGrowthReport';
 import { LinimasaCuitan } from '../Cuitan/LinimasaCuitan';
+import { KelolaKolaboratorModal } from './KelolaKolaboratorModal';
 
 interface StudentLobiProps {
   nama: string;
@@ -236,6 +238,13 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   const [newDocTitle, setNewDocTitle] = useState('');
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
 
+  // State Kolaborasi Multi-Siswa
+  const [isCollabMode, setIsCollabMode] = useState<boolean>(false);
+  const [selectedCollabs, setSelectedCollabs] = useState<KolaboratorAnggota[]>([]);
+  const [classmates, setClassmates] = useState<UserAccount[]>([]);
+  const [classmateSearch, setClassmateSearch] = useState<string>('');
+  const [managingCollabDoc, setManagingCollabDoc] = useState<Dokumen | null>(null);
+
   // Penugasan Kelas Siswa
   const [penugasanList, setPenugasanList] = useState<Penugasan[]>([]);
   const [selectedTugasId, setSelectedTugasId] = useState<string>('');
@@ -248,6 +257,12 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     }, kodeKelas);
     return () => unsub();
   }, [kodeKelas]);
+
+  useEffect(() => {
+    if (isNewDocOpen && kodeKelas) {
+      DataService.getTemanSekelas(kodeKelas, username).then(setClassmates).catch(() => {});
+    }
+  }, [isNewDocOpen, kodeKelas, username]);
 
   const [publishDocId, setPublishDocId] = useState<string | null>(null);
   const [publishTopic, setPublishTopic] = useState('Cerpen');
@@ -314,7 +329,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       Object.values(docs).forEach((d) => {
         const isAuthor = d.username ? d.username === username : d.nama === nama;
-        if (isAuthor && d.penulisKategori !== 'Guru') {
+        const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+        if ((isAuthor || isCollab) && d.penulisKategori !== 'Guru') {
           myDocs.push(d);
         }
 
@@ -469,12 +485,16 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
         'Siswa',
         activeTask?.topik,
         selectedTugasId || null,
-        selectedTugasJudul || null
+        selectedTugasJudul || null,
+        isCollabMode,
+        selectedCollabs
       );
       setIsNewDocOpen(false);
       setNewDocTitle('');
       setSelectedTugasId('');
       setSelectedTugasJudul('');
+      setIsCollabMode(false);
+      setSelectedCollabs([]);
       onOpenEditor(docId);
     } catch (err: any) {
       console.error('Gagal membuat dokumen:', err);
@@ -619,7 +639,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
           <button
             onClick={() => setIsNewDocOpen(true)}
-            className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:!text-stone-950 px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-all"
+            className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-all"
             title="Buat Naskah Tulisan Baru"
           >
             <Plus size={15} />
@@ -744,7 +764,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                       taskFilterStatus === tab.id
                         ? tab.alert
                           ? 'bg-orange-600 text-white border-orange-600 shadow-2xs'
-                          : 'bg-stone-900 text-white border-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100 shadow-2xs'
+                          : 'bg-stone-900 text-white border-stone-900 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700 shadow-2xs'
                         : tab.alert
                         ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800/80 hover:bg-orange-100'
                         : 'bg-white dark:bg-[#141416] text-stone-600 dark:text-stone-400 border-stone-200/80 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800/80'
@@ -779,7 +799,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     onClick={() => setIsNewDocOpen(true)}
-                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 px-4 py-2.5 text-xs cursor-pointer"
+                    className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-4 py-2.5 text-xs cursor-pointer"
                   >
                     <Plus size={15} /> Buat Tugas
                   </button>
@@ -816,6 +836,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredDokumenList.map((doc) => {
                   const isApproved = doc.status === 'Selesai' || doc.izinPublish;
+                  const isCollabDoc = Boolean(doc.isKolaboratif || (doc.kolaborator && doc.kolaborator.length > 0));
+                  const isPembuat = doc.username ? doc.username === username : doc.nama === nama;
                   const info = getDocStatusInfo(doc);
                   const StatusIcon = info.icon;
 
@@ -842,6 +864,11 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                                 <BookOpen size={10} /> {doc.judulTugas}
                               </span>
                             )}
+                            {isCollabDoc && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-900/40 flex items-center gap-1">
+                                <Users size={10} /> Kolaborasi ({(doc.kolaborator?.length || 0) + 1})
+                              </span>
+                            )}
                           </div>
 
                           {doc.pelanggaran > 0 && (
@@ -851,9 +878,29 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                           )}
                         </div>
 
-                        <h4 className="font-serif-literary font-bold text-base text-stone-900 dark:text-stone-100 line-clamp-2 mb-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        <h4 className="font-serif-literary font-bold text-base text-stone-900 dark:text-stone-100 line-clamp-2 mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                           {doc.judul || 'Tanpa Judul'}
                         </h4>
+
+                        {/* Info Tim Kolaborasi */}
+                        {isCollabDoc && (
+                          <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[11px] text-stone-500 dark:text-stone-400">
+                            <span className="text-[10px] text-stone-400">Penulis:</span>
+                            <span className="font-semibold text-stone-700 dark:text-stone-300">
+                              {doc.nama}
+                            </span>
+                            {doc.kolaborator && doc.kolaborator.length > 0 && (
+                              <span>
+                                & {doc.kolaborator.map((k) => k.nama).join(', ')}
+                              </span>
+                            )}
+                            {!isPembuat && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-semibold ml-1">
+                                Kolaborator
+                              </span>
+                            )}
+                          </div>
+                        )}
 
                         {info.needsRevision && (
                           <div className="mt-1 mb-2.5 px-2.5 py-1.5 rounded-lg bg-orange-50 dark:bg-orange-950/40 border border-orange-200/90 dark:border-orange-800 text-[11px] text-orange-900 dark:text-orange-200 flex items-center gap-1.5">
@@ -874,7 +921,18 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             : `Diedit: ${doc.waktuEdit || '-'}`}
                         </span>
 
-                        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {isCollabDoc && (
+                            <button
+                              type="button"
+                              onClick={() => setManagingCollabDoc(doc)}
+                              className="editorial-btn bg-stone-100 hover:bg-purple-50 text-stone-600 hover:text-purple-700 dark:bg-stone-800 dark:hover:bg-purple-950/50 dark:text-stone-300 dark:hover:text-purple-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Kelola Kolaborator"
+                            >
+                              <Users size={12} /> Kolaborator ({(doc.kolaborator?.length || 0) + 1})
+                            </button>
+                          )}
+
                           {isApproved && !doc.isPublic && (
                             <button
                               onClick={() => setPublishDocId(doc.id)}
@@ -885,7 +943,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             </button>
                           )}
 
-                          {doc.status === 'Draf' && (
+                          {doc.status === 'Draf' && isPembuat && (
                             <button
                               onClick={() => setDeleteDocId(doc.id)}
                               className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
@@ -1034,7 +1092,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   onClick={() => setMadingFilterTopik(topik)}
                   className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap transition-all cursor-pointer ${
                     madingFilterTopik === topik
-                      ? 'bg-stone-900 text-white border-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100 shadow-2xs'
+                      ? 'bg-stone-900 text-white border-stone-900 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700 shadow-2xs'
                       : 'bg-white dark:bg-[#141416] text-stone-600 dark:text-stone-400 border-stone-200/80 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800/80'
                   }`}
                 >
@@ -1240,6 +1298,155 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 />
               </div>
 
+              {/* Pilihan Mode Penulisan: Mandiri vs Kolaborasi */}
+              <div>
+                <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
+                  Mode Penulisan:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCollabMode(false);
+                      setSelectedCollabs([]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      !isCollabMode
+                        ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 text-blue-900 dark:text-blue-200 ring-1 ring-blue-500/30'
+                        : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-blue-700 dark:text-blue-300 shrink-0">
+                      <Feather size={13} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-[11px]">Mandiri</p>
+                      <p className="text-[10px] opacity-75">Tulis sendiri</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCollabMode(true)}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      isCollabMode
+                        ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-500 text-purple-900 dark:text-purple-200 ring-1 ring-purple-500/30'
+                        : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-700 dark:text-purple-300 shrink-0">
+                      <Users size={13} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-[11px]">Kolaborasi</p>
+                      <p className="text-[10px] opacity-75">Bersama teman</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bagian Pilih Teman jika Mode Kolaborasi */}
+              {isCollabMode && (
+                <div className="p-3 rounded-xl bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200/70 dark:border-purple-900/40 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-purple-900 dark:text-purple-200 text-[11px] flex items-center gap-1.5">
+                      <Users size={13} /> Pilih Teman Kolaborator ({selectedCollabs.length} / 3)
+                    </span>
+                    <span className="text-[10px] text-stone-400">
+                      Total maks. 4 orang (kamu + 3 teman)
+                    </span>
+                  </div>
+
+                  {/* Chips Teman yang Dipilih */}
+                  {selectedCollabs.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedCollabs.map((collab) => (
+                        <span
+                          key={collab.username}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] bg-white dark:bg-stone-900 border border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200 shadow-2xs font-medium"
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: collab.warna || stringToColor(collab.username) }}
+                          />
+                          {collab.nama}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCollabs((prev) => prev.filter((c) => c.username !== collab.username))}
+                            className="p-0.5 hover:text-red-600 rounded-full cursor-pointer ml-0.5"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Pencarian dan Pemilihan Teman */}
+                  {selectedCollabs.length < 3 && (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        placeholder="Cari nama teman sekelas..."
+                        value={classmateSearch}
+                        onChange={(e) => setClassmateSearch(e.target.value)}
+                        className="editorial-input w-full px-2.5 py-1.5 text-xs bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-750 dark:text-stone-100 rounded-lg"
+                      />
+
+                      <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                        {classmates
+                          .filter((cm) => {
+                            if (selectedCollabs.some((c) => c.username === cm.username)) return false;
+                            if (cm.username === username) return false;
+                            if (!classmateSearch.trim()) return true;
+                            const q = classmateSearch.toLowerCase();
+                            return cm.nama.toLowerCase().includes(q) || cm.username.toLowerCase().includes(q);
+                          })
+                          .slice(0, 6)
+                          .map((cm) => (
+                            <div
+                              key={cm.username}
+                              className="p-1.5 rounded-lg bg-white/80 dark:bg-stone-900/80 hover:bg-white dark:hover:bg-stone-850 border border-stone-200/60 dark:border-stone-800 flex items-center justify-between transition-colors text-[11px]"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-white text-[9px]"
+                                  style={{ backgroundColor: stringToColor(cm.username) }}
+                                >
+                                  {cm.nama.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="font-medium text-stone-800 dark:text-stone-200">{cm.nama}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedCollabs.length >= 3) return;
+                                  setSelectedCollabs((prev) => [
+                                    ...prev,
+                                    {
+                                      username: cm.username,
+                                      nama: cm.nama,
+                                      warna: stringToColor(cm.username),
+                                      waktuDitambahkan: getWaktuSekarang(),
+                                    },
+                                  ]);
+                                }}
+                                className="editorial-btn bg-purple-100 hover:bg-purple-600 hover:text-white dark:bg-purple-950/60 dark:hover:bg-purple-600 text-purple-900 dark:text-purple-200 text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                              >
+                                + Pilih
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-stone-500 dark:text-stone-400 italic">
+                    * Kamu adalah pembuat naskah. Teman yang dipilih dapat menulis bersama secara langsung. Kolaborator juga bisa ditambah atau dikeluarkan kapan saja nanti.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100 dark:border-stone-800">
                 <button
                   type="button"
@@ -1255,7 +1462,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 rounded-xl shadow-xs transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-white bg-stone-900 hover:bg-stone-800 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 dark:border dark:border-stone-700 rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   Mulai Menulis
                 </button>
@@ -1412,7 +1619,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         setRedeemFeedback(null);
                         setRedeemInput('');
                       }}
-                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-2.5 text-xs font-bold cursor-pointer shadow-xs"
+                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-2.5 text-xs font-bold cursor-pointer shadow-xs"
                     >
                       Tutup
                     </button>
@@ -1471,7 +1678,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                       type="button"
                       disabled={isRedeeming || !redeemInput.trim()}
                       onClick={handleKlaimRedeem}
-                      className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-2.5 text-xs font-bold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                      className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-2.5 text-xs font-bold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
                       {isRedeeming ? (
                         <>
@@ -1542,7 +1749,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         setRedeemFeedback(null);
                         setRedeemInput('');
                       }}
-                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 py-2.5 text-xs font-bold cursor-pointer shadow-xs"
+                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-2.5 text-xs font-bold cursor-pointer shadow-xs"
                     >
                       Buka & Lihat di Tulisanku
                     </button>
@@ -1695,7 +1902,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 type="button"
                 disabled={isUpdatingAccount || !newUsernameInput.trim()}
                 onClick={handleSaveAccount}
-                className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:!text-stone-950 py-2.5 text-xs font-bold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                className="editorial-btn flex-1 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 py-2.5 text-xs font-bold cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
               >
                 {isUpdatingAccount ? (
                   <>
@@ -1709,6 +1916,22 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Kelola Kolaborator Naskah */}
+      <KelolaKolaboratorModal
+        isOpen={Boolean(managingCollabDoc)}
+        onClose={() => setManagingCollabDoc(null)}
+        doc={managingCollabDoc}
+        currentUsername={username}
+        kodeKelas={kodeKelas}
+        onSuccess={() => {
+          if (managingCollabDoc) {
+            DataService.getDokumenById(managingCollabDoc.id).then((updated) => {
+              if (updated) setManagingCollabDoc(updated);
+            });
+          }
+        }}
+      />
     </div>
   );
 };

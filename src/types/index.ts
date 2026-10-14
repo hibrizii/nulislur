@@ -68,6 +68,13 @@ export interface Penugasan {
   targetKataMin?: number | null;
 }
 
+export interface KolaboratorAnggota {
+  username: string;
+  nama: string;
+  warna?: string;
+  waktuDitambahkan?: string;
+}
+
 export interface Dokumen {
   id: string;
   nama: string;
@@ -94,6 +101,10 @@ export interface Dokumen {
   views?: number;
   penilaian?: PenilaianRubrik;
   layoutMode?: 'web' | 'kertas';
+  // Fitur Kolaborasi Tulisan (Multi-Siswa)
+  isKolaboratif?: boolean;
+  kolaborator?: KolaboratorAnggota[];
+  kolaboratorUsernames?: string[];
 }
 
 export interface LiveStatus {

@@ -169,7 +169,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-between px-3'
               } ${
                 activeTab === 'pantauan'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -206,7 +206,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-between px-3'
               } ${
                 activeTab === 'penilaian'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -243,7 +243,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-start px-3'
               } ${
                 activeTab === 'kelas'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -270,7 +270,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-start px-3'
               } ${
                 activeTab === 'cuitan'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -291,7 +291,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-start px-3'
               } ${
                 activeTab === 'mading'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -312,7 +312,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-start px-3'
               } ${
                 activeTab === 'redaksi'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
@@ -333,7 +333,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 isCollapsed ? 'lg:justify-center lg:px-0' : 'justify-start px-3'
               } ${
                 activeTab === 'migrasi'
-                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs font-semibold'
+                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-xs font-semibold'
                   : 'text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80 hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >

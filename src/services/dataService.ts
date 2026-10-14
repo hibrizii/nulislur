@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import type { Dokumen, UserAccount, KelasRoom, LiveStatus, PenilaianRubrik, MigrasiRedeemItem, Penugasan, Pengumuman, CuitanItem, CuitanKomentar } from '../types';
+import type { Dokumen, UserAccount, KelasRoom, LiveStatus, PenilaianRubrik, MigrasiRedeemItem, Penugasan, Pengumuman, CuitanItem, CuitanKomentar, KolaboratorAnggota } from '../types';
 import { initialMigrasiRedeemData } from '../data/migrasi_redeem_data';
+import { uint8ArrayToBase64, base64ToUint8Array } from '../utils/binaryUtils';
 
 // Helper Waktu Standar Indonesia
 export function getWaktuSekarang(): string {
@@ -14,14 +15,19 @@ export function getWaktuSekarang(): string {
   });
 }
 
-// Helper Hashing Warna Avatar / Nama
+// Helper Hashing Warna Avatar / Nama (Warna HEX 6-digit valid untuk CRDT Awareness & CSS)
 export function stringToColor(str: string): string {
+  const palette = [
+    '#2563EB', '#7C3AED', '#DB2777', '#EA580C', 
+    '#059669', '#0891B2', '#D97706', '#4F46E5',
+    '#DC2626', '#0D9488', '#9333EA', '#CA8A04'
+  ];
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const h = Math.abs(hash) % 360;
-  return `hsl(${h}, 65%, 45%)`;
+  const idx = Math.abs(hash) % palette.length;
+  return palette[idx];
 }
 
 // Helper Topik Warna (Modern Soft Editorial)
@@ -123,6 +129,38 @@ function mapDokumenRow(row: Record<string, unknown>): Dokumen {
     } catch {}
   }
 
+  // Resolusi data kolaborasi multi-siswa
+  let isKolaboratif = Boolean(row.is_kolaboratif);
+  let parsedKolaborator: KolaboratorAnggota[] = [];
+  if (row.kolaborator) {
+    try {
+      parsedKolaborator = typeof row.kolaborator === 'string' ? JSON.parse(row.kolaborator) : (row.kolaborator as KolaboratorAnggota[]);
+    } catch {}
+  }
+  let parsedKolaboratorUsernames: string[] = [];
+  if (row.kolaborator_usernames) {
+    try {
+      parsedKolaboratorUsernames = typeof row.kolaborator_usernames === 'string' ? JSON.parse(row.kolaborator_usernames) : (row.kolaborator_usernames as string[]);
+    } catch {}
+  }
+  if (parsedKolaborator.length > 0 && parsedKolaboratorUsernames.length === 0) {
+    parsedKolaboratorUsernames = parsedKolaborator.map((k) => k.username);
+  }
+  if (!isKolaboratif && parsedKolaborator.length > 0) {
+    isKolaboratif = true;
+  }
+  if (typeof window !== 'undefined' && (!parsedKolaborator || parsedKolaborator.length === 0)) {
+    try {
+      const local = getLocalDB();
+      const localDoc = local.dokumen?.[String(row.id)];
+      if (localDoc?.kolaborator && localDoc.kolaborator.length > 0) {
+        parsedKolaborator = localDoc.kolaborator;
+        parsedKolaboratorUsernames = localDoc.kolaboratorUsernames || parsedKolaborator.map((k) => k.username);
+        isKolaboratif = true;
+      }
+    } catch {}
+  }
+
   return {
     id: String(row.id),
     nama: String(row.nama || ''),
@@ -147,6 +185,9 @@ function mapDokumenRow(row: Record<string, unknown>): Dokumen {
     views: Number(row.views || 0),
     penilaian: parsedPenilaian,
     layoutMode,
+    isKolaboratif,
+    kolaborator: parsedKolaborator,
+    kolaboratorUsernames: parsedKolaboratorUsernames,
   };
 }
 
@@ -352,7 +393,7 @@ export function hitungPenilaianOtomatis(
       skorMikro: 100,
       skorTotal: 100,
       predikat: 'Sangat Baik',
-      catatanGuru: catatanUmum || doc.feedbackUmum,
+      catatanGuru: catatanUmum !== undefined ? catatanUmum.trim() : (doc.feedbackUmum || doc.penilaian?.catatanGuru || ''),
       waktuDinilai: getWaktuSekarang(),
       tagCounts: {},
     };
@@ -407,7 +448,7 @@ export function hitungPenilaianOtomatis(
     skorMikro,
     skorTotal,
     predikat,
-    catatanGuru: catatanUmum || doc.feedbackUmum || '',
+    catatanGuru: catatanUmum !== undefined ? catatanUmum.trim() : (doc.feedbackUmum || doc.penilaian?.catatanGuru || ''),
     waktuDinilai: getWaktuSekarang(),
     tagCounts,
   };
@@ -1377,13 +1418,109 @@ export const DataService = {
           }
         }
 
-        // Jika username berubah, perbarui referensi relasional
+        // Jika username berubah, perbarui seluruh referensi relasional
         if (isUsernameChanged) {
           try {
             await supabase.from('dokumen').update({ username: cleanNew }).eq('username', cleanOld);
             await supabase.from('kehadiran_live').update({ username: cleanNew }).eq('username', cleanOld);
             await supabase.from('komentar').update({ username: cleanNew }).eq('username', cleanOld);
           } catch {}
+
+          // Perbarui dokumen di mana user terdaftar sebagai rekan kolaborator
+          try {
+            const { data: collabDocs } = await supabase
+              .from('dokumen')
+              .select('id, kolaborator, kolaborator_usernames')
+              .eq('is_kolaboratif', true);
+            if (collabDocs && collabDocs.length > 0) {
+              for (const cd of collabDocs) {
+                const kList = cd.kolaborator || [];
+                const uList = cd.kolaborator_usernames || [];
+                const hasUser = uList.includes(cleanOld) || kList.some((k: any) => k.username === cleanOld);
+                if (hasUser) {
+                  const updatedKList = kList.map((k: any) =>
+                    k.username === cleanOld ? { ...k, username: cleanNew } : k
+                  );
+                  const updatedUList = uList.map((u: string) => (u === cleanOld ? cleanNew : u));
+                  await supabase
+                    .from('dokumen')
+                    .update({
+                      kolaborator: updatedKList,
+                      kolaborator_usernames: updatedUList,
+                    })
+                    .eq('id', cd.id);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Gagal cascade kolaborator dokumen di Supabase:', e);
+          }
+
+          // Perbarui Cuitan, Komentar Cuitan, dan Likes Cuitan
+          try {
+            const cuitanList = inMemoryCuitanCache || (await this.getCuitanList());
+            let cuitanChanged = false;
+            const updatedCuitanList = cuitanList.map((c) => {
+              let itemChanged = false;
+              let cUsername = c.username;
+              if (c.username === cleanOld) {
+                cUsername = cleanNew;
+                itemChanged = true;
+              }
+              let cLikes = c.likes || [];
+              if (cLikes.includes(cleanOld)) {
+                cLikes = cLikes.map((u) => (u === cleanOld ? cleanNew : u));
+                itemChanged = true;
+              }
+              let cKomentar = c.komentar || [];
+              const updatedKomentar = cKomentar.map((k) => {
+                let komChanged = false;
+                let kUsername = k.username;
+                let kReplyTo = k.replyToUsername;
+                let kLikes = k.likes || [];
+                if (k.username === cleanOld) {
+                  kUsername = cleanNew;
+                  komChanged = true;
+                }
+                if (k.replyToUsername === cleanOld) {
+                  kReplyTo = cleanNew;
+                  komChanged = true;
+                }
+                if (kLikes.includes(cleanOld)) {
+                  kLikes = kLikes.map((u) => (u === cleanOld ? cleanNew : u));
+                  komChanged = true;
+                }
+                if (komChanged) {
+                  itemChanged = true;
+                  return { ...k, username: kUsername, replyToUsername: kReplyTo, likes: kLikes };
+                }
+                return k;
+              });
+
+              if (itemChanged) {
+                cuitanChanged = true;
+                return {
+                  ...c,
+                  username: cUsername,
+                  likes: cLikes,
+                  komentar: updatedKomentar,
+                };
+              }
+              return c;
+            });
+
+            if (cuitanChanged) {
+              saveCuitanState(updatedCuitanList, true);
+              if (isSupabaseConfigured) {
+                await supabase.from('pengaturan').upsert({
+                  key: 'cuitan_list',
+                  val: JSON.stringify(updatedCuitanList),
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('Gagal cascade username ke cuitan:', e);
+          }
 
           // Perbarui tiket redeem jika pernah klaim
           try {
@@ -1425,7 +1562,60 @@ export const DataService = {
             password: updatedUser.password
           };
         }
+        if (isUsernameChanged) {
+          // Dokumen di localDB
+          Object.values(local.dokumen).forEach((d) => {
+            if (d.username === cleanOld) d.username = cleanNew;
+            if (d.kolaborator && Array.isArray(d.kolaborator)) {
+              d.kolaborator.forEach((k) => {
+                if (k.username === cleanOld) k.username = cleanNew;
+              });
+            }
+            if (d.kolaboratorUsernames && Array.isArray(d.kolaboratorUsernames)) {
+              d.kolaboratorUsernames = d.kolaboratorUsernames.map((u) => (u === cleanOld ? cleanNew : u));
+            }
+          });
+          // Likes & Komentar di localDB
+          if (local.likes) {
+            Object.keys(local.likes).forEach((docId) => {
+              if (local.likes[docId] && local.likes[docId][cleanOld] !== undefined) {
+                local.likes[docId][cleanNew] = local.likes[docId][cleanOld];
+                delete local.likes[docId][cleanOld];
+              }
+            });
+          }
+          if (local.komentar) {
+            Object.keys(local.komentar).forEach((docId) => {
+              if (local.komentar[docId]) {
+                local.komentar[docId].forEach((k) => {
+                  if (k.username === cleanOld) k.username = cleanNew;
+                });
+              }
+            });
+          }
+          if (local.live && local.live[cleanOld]) {
+            const liveOld = local.live[cleanOld];
+            delete local.live[cleanOld];
+            local.live[cleanNew] = { ...liveOld, username: cleanNew };
+          }
+        }
         saveLocalDB(local);
+
+        // Update session di peramban seketika
+        if (isUsernameChanged && typeof window !== 'undefined') {
+          try {
+            const curSession = localStorage.getItem('nulislur_session');
+            if (curSession) {
+              const parsed = JSON.parse(curSession);
+              if (parsed.username === cleanOld) {
+                const updated = { ...parsed, username: cleanNew, password: updatedUser.password };
+                localStorage.setItem('nulislur_session', JSON.stringify(updated));
+                sessionStorage.setItem('nulislur_session', JSON.stringify(updated));
+              }
+            }
+          } catch {}
+          window.dispatchEvent(new CustomEvent('nulislur_db_change'));
+        }
 
         return {
           success: true,
@@ -1465,7 +1655,34 @@ export const DataService = {
 
       Object.values(local.dokumen).forEach((d) => {
         if (d.username === cleanOld) d.username = cleanNew;
+        if (d.kolaborator && Array.isArray(d.kolaborator)) {
+          d.kolaborator.forEach((k) => {
+            if (k.username === cleanOld) k.username = cleanNew;
+          });
+        }
+        if (d.kolaboratorUsernames && Array.isArray(d.kolaboratorUsernames)) {
+          d.kolaboratorUsernames = d.kolaboratorUsernames.map((u) => (u === cleanOld ? cleanNew : u));
+        }
       });
+
+      if (local.likes) {
+        Object.keys(local.likes).forEach((docId) => {
+          if (local.likes[docId] && local.likes[docId][cleanOld] !== undefined) {
+            local.likes[docId][cleanNew] = local.likes[docId][cleanOld];
+            delete local.likes[docId][cleanOld];
+          }
+        });
+      }
+
+      if (local.komentar) {
+        Object.keys(local.komentar).forEach((docId) => {
+          if (local.komentar[docId]) {
+            local.komentar[docId].forEach((k) => {
+              if (k.username === cleanOld) k.username = cleanNew;
+            });
+          }
+        });
+      }
 
       if (local.live[cleanOld]) {
         const liveOld = local.live[cleanOld];
@@ -1478,11 +1695,45 @@ export const DataService = {
           if (r.redeemedByUsername === cleanOld) r.redeemedByUsername = cleanNew;
         });
       }
+
+      // Cascade ke cuitan lokal
+      if (local.cuitanList) {
+        local.cuitanList = local.cuitanList.map((c) => {
+          let cUser = c.username === cleanOld ? cleanNew : c.username;
+          let cLikes = (c.likes || []).map((u) => (u === cleanOld ? cleanNew : u));
+          let cKom = (c.komentar || []).map((k) => ({
+            ...k,
+            username: k.username === cleanOld ? cleanNew : k.username,
+            replyToUsername: k.replyToUsername === cleanOld ? cleanNew : k.replyToUsername,
+            likes: (k.likes || []).map((u) => (u === cleanOld ? cleanNew : u)),
+          }));
+          return { ...c, username: cUser, likes: cLikes, komentar: cKom };
+        });
+        inMemoryCuitanCache = local.cuitanList;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nulislur_cuitan_change', { detail: local.cuitanList }));
+        }
+      }
     } else {
       target.password = finalPassword;
     }
 
     saveLocalDB(local);
+
+    if (isUsernameChanged && typeof window !== 'undefined') {
+      try {
+        const curSession = localStorage.getItem('nulislur_session');
+        if (curSession) {
+          const parsed = JSON.parse(curSession);
+          if (parsed.username === cleanOld) {
+            const updated = { ...parsed, username: cleanNew, password: finalPassword };
+            localStorage.setItem('nulislur_session', JSON.stringify(updated));
+            sessionStorage.setItem('nulislur_session', JSON.stringify(updated));
+          }
+        }
+      } catch {}
+      window.dispatchEvent(new CustomEvent('nulislur_db_change'));
+    }
 
     const updatedUser: UserAccount = {
       ...local.users[cleanNew || cleanOld],
@@ -1826,7 +2077,9 @@ export const DataService = {
     penulisKategori: 'Siswa' | 'Guru' = 'Siswa',
     topik?: string,
     tugasId?: string | null,
-    judulTugas?: string | null
+    judulTugas?: string | null,
+    isKolaboratif?: boolean,
+    kolaborator?: KolaboratorAnggota[]
   ): Promise<string> {
     const cleanJudul = judul.replace(/\n|\r/g, ' ').substring(0, 100);
     const waktu = getWaktuSekarang();
@@ -1842,6 +2095,10 @@ export const DataService = {
         namaKelasDoc = local.users[username].namaKelas;
       }
     } catch {}
+
+    const safeCollab = Boolean(isKolaboratif);
+    const safeKolaborator = kolaborator || [];
+    const safeUsernames = safeKolaborator.map((k) => k.username);
 
     if (isSupabaseConfigured) {
       const payload: Record<string, unknown> = {
@@ -1861,14 +2118,19 @@ export const DataService = {
       if (topik) payload.topik = topik;
       if (tugasId) payload.tugas_id = tugasId;
       if (judulTugas) payload.judul_tugas = judulTugas;
+      if (safeCollab) {
+        payload.is_kolaboratif = true;
+        payload.kolaborator = safeKolaborator;
+        payload.kolaborator_usernames = safeUsernames;
+      }
 
       let insertRes = await supabase.from('dokumen').insert(payload).select('id').single();
       let data = insertRes.data;
       let error = insertRes.error;
 
-      // Dynamic missing column retry loop jika schema Supabase belum memiliki layout_mode, tugas_id, dll:
+      // Dynamic missing column retry loop jika schema Supabase belum memiliki layout_mode, is_kolaboratif, dll:
       let attempts = 0;
-      while (error && attempts < 6) {
+      while (error && attempts < 8) {
         attempts++;
         const errMsg = error.message || '';
         let colRemoved = false;
@@ -1882,7 +2144,7 @@ export const DataService = {
           }
         }
 
-        const candidateCols = ['layout_mode', 'tugas_id', 'judul_tugas', 'topik', 'penulis_kategori'];
+        const candidateCols = ['layout_mode', 'tugas_id', 'judul_tugas', 'topik', 'penulis_kategori', 'is_kolaboratif', 'kolaborator', 'kolaborator_usernames'];
         for (const col of candidateCols) {
           if (errMsg.toLowerCase().includes(col) && col in payload) {
             delete payload[col];
@@ -1921,7 +2183,10 @@ export const DataService = {
           topik,
           tugasId: tugasId || undefined,
           judulTugas: judulTugas || undefined,
-          layoutMode: defaultLayout
+          layoutMode: defaultLayout,
+          isKolaboratif: safeCollab,
+          kolaborator: safeKolaborator,
+          kolaboratorUsernames: safeUsernames,
         };
         local.dokumen[fallbackId] = fallbackDoc;
         saveLocalDB(local);
@@ -1959,7 +2224,10 @@ export const DataService = {
           topik,
           tugasId: tugasId || undefined,
           judulTugas: judulTugas || undefined,
-          layoutMode: defaultLayout
+          layoutMode: defaultLayout,
+          isKolaboratif: safeCollab,
+          kolaborator: safeKolaborator,
+          kolaboratorUsernames: safeUsernames,
         };
         saveLocalDB(local);
       } catch {}
@@ -1987,11 +2255,90 @@ export const DataService = {
       topik,
       tugasId: tugasId || undefined,
       judulTugas: judulTugas || undefined,
-      layoutMode: defaultLayout
+      layoutMode: defaultLayout,
+      isKolaboratif: safeCollab,
+      kolaborator: safeKolaborator,
+      kolaboratorUsernames: safeUsernames,
     };
     local.dokumen[id] = doc;
     saveLocalDB(local);
     return id;
+  },
+
+  async updateKolaboratorDokumen(docId: string, kolaborator: KolaboratorAnggota[]): Promise<boolean> {
+    if (!docId) return false;
+    const isCollab = kolaborator.length > 0;
+    const usernames = kolaborator.map((k) => k.username);
+
+    const local = getLocalDB();
+    if (local.dokumen && local.dokumen[docId]) {
+      local.dokumen[docId].isKolaboratif = isCollab;
+      local.dokumen[docId].kolaborator = kolaborator;
+      local.dokumen[docId].kolaboratorUsernames = usernames;
+      saveLocalDB(local);
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const payload: Record<string, unknown> = {
+          is_kolaboratif: isCollab,
+          kolaborator: kolaborator,
+          kolaborator_usernames: usernames,
+        };
+        let updateRes = await supabase.from('dokumen').update(payload).eq('id', docId);
+        let error = updateRes.error;
+        let attempts = 0;
+        while (error && attempts < 4) {
+          attempts++;
+          const errMsg = error.message || '';
+          let colRemoved = false;
+          const match = errMsg.match(/Could not find the '([^']+)' column/i);
+          if (match && match[1] && match[1] in payload) {
+            delete payload[match[1]];
+            colRemoved = true;
+          }
+          if (colRemoved) {
+            updateRes = await supabase.from('dokumen').update(payload).eq('id', docId);
+            error = updateRes.error;
+          } else {
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal update kolaborator ke Supabase:', e);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('nulislur_db_change'));
+    }
+    return true;
+  },
+
+  async getTemanSekelas(kodeKelas?: string, excludeUsername?: string): Promise<UserAccount[]> {
+    if (isSupabaseConfigured && kodeKelas) {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('username, nama, role, kode_kelas, nama_kelas')
+          .eq('role', 'siswa')
+          .eq('kode_kelas', kodeKelas);
+        if (data && data.length > 0) {
+          return data
+            .filter((u) => u.username !== excludeUsername)
+            .map((u) => ({
+              username: u.username,
+              nama: u.nama,
+              role: 'siswa',
+              kodeKelas: u.kode_kelas,
+              namaKelas: u.nama_kelas,
+            }));
+        }
+      } catch {}
+    }
+    const local = getLocalDB();
+    return Object.values(local.users || {})
+      .filter((u) => u.role === 'siswa' && (!kodeKelas || u.kodeKelas === kodeKelas) && u.username !== excludeUsername);
   },
 
   async simpanDokumen(id: string, judul: string, teks: string, topik?: string, layoutMode?: 'web' | 'kertas') {
@@ -2226,14 +2573,15 @@ export const DataService = {
   },
 
   async simpanFeedbackUmum(id: string, feedback: string) {
+    const cleanFeedback = (feedback || '').trim();
     if (isSupabaseConfigured) {
-      await supabase.from('dokumen').update({ feedback_umum: feedback }).eq('id', id);
+      await supabase.from('dokumen').update({ feedback_umum: cleanFeedback }).eq('id', id);
       return;
     }
 
     const local = getLocalDB();
     if (local.dokumen[id]) {
-      local.dokumen[id].feedbackUmum = feedback;
+      local.dokumen[id].feedbackUmum = cleanFeedback;
       saveLocalDB(local);
     }
   },
@@ -2241,13 +2589,12 @@ export const DataService = {
   async simpanPenilaian(id: string, penilaian: PenilaianRubrik, markSelesai = true) {
     if (!id) return;
     const waktu = getWaktuSekarang();
+    const cleanFeedback = (penilaian.catatanGuru || '').trim();
 
     const local = getLocalDB();
     if (local.dokumen[id]) {
       local.dokumen[id].penilaian = penilaian;
-      if (penilaian.catatanGuru) {
-        local.dokumen[id].feedbackUmum = penilaian.catatanGuru;
-      }
+      local.dokumen[id].feedbackUmum = cleanFeedback;
       if (markSelesai) {
         local.dokumen[id].status = 'Selesai';
       }
@@ -2257,7 +2604,7 @@ export const DataService = {
 
     if (isSupabaseConfigured) {
       const payload: Record<string, unknown> = {
-        feedback_umum: penilaian.catatanGuru || undefined,
+        feedback_umum: cleanFeedback,
         waktu_edit: waktu,
       };
       if (markSelesai) {
@@ -2755,6 +3102,18 @@ export const DataService = {
     }
     const local = getLocalDB();
     return { ...local.dokumen };
+  },
+
+  async getDokumenById(id: string): Promise<Dokumen | null> {
+    if (!id) return null;
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('dokumen').select('*').eq('id', id).maybeSingle();
+        if (data) return mapDokumenRow(data);
+      } catch {}
+    }
+    const local = getLocalDB();
+    return local.dokumen?.[id] || null;
   },
 
   // 8. Unified Real-Time Listeners
@@ -4278,6 +4637,59 @@ export const DataService = {
         supabase.removeChannel(channel);
       }
     };
+  },
+
+  async saveYjsDocState(docId: string, state: Uint8Array): Promise<void> {
+    if (!docId || !state || state.byteLength <= 4) return;
+    try {
+      const b64 = uint8ArrayToBase64(state);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`collab_yjs_${docId}`, b64);
+        } catch {}
+      }
+      if (isSupabaseConfigured) {
+        await supabase.from('pengaturan').upsert({
+          key: `collab_yjs_${docId}`,
+          val: b64,
+        });
+      }
+    } catch (e) {
+      console.warn('Gagal menyimpan state Yjs dokumen:', e);
+    }
+  },
+
+  async getYjsDocState(docId: string): Promise<Uint8Array | null> {
+    try {
+      // 1. Coba ambil dari Supabase
+      if (isSupabaseConfigured) {
+        const { data } = await supabase
+          .from('pengaturan')
+          .select('val')
+          .eq('key', `collab_yjs_${docId}`)
+          .maybeSingle();
+        if (data?.val) {
+          const arr = base64ToUint8Array(data.val);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(`collab_yjs_${docId}`, data.val);
+            } catch {}
+          }
+          return arr;
+        }
+      }
+
+      // 2. Fallback ambil dari localStorage
+      if (typeof window !== 'undefined') {
+        const localVal = localStorage.getItem(`collab_yjs_${docId}`);
+        if (localVal) {
+          return base64ToUint8Array(localVal);
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal membaca state Yjs dokumen:', e);
+    }
+    return null;
   }
 };
 

@@ -25,14 +25,14 @@ import {
   CloudCheck,
   CheckCircle
 } from 'lucide-react';
-import type { Dokumen, UserAccount, Komentar, Penugasan } from '../../../types';
-import { NulisEditor } from '../../Editor/NulisEditor';
+import { NulisEditor, TEACHER_FEEDBACK_OPTIONS, type TeacherFeedbackOption } from '../../Editor/NulisEditor';
 import { 
   DataService, 
   stringToColor, 
   parseDocumentTagCounts,
   hitungPenilaianOtomatis
 } from '../../../services/dataService';
+import type { Dokumen, UserAccount, Komentar, Penugasan } from '../../../types';
 import { exportToPdf, exportToWord, cleanSnippet } from '../../../utils/exportDocument';
 
 // Helper Klasifikasi Status Antrean Pedagogis
@@ -40,9 +40,11 @@ export function getDocQueueCategory(d: Dokumen): 'terkumpul' | 'revisi' | 'seles
   if (d.status === 'Selesai' || d.isPublic) return 'selesai';
   if (d.status === 'Terkumpul') return 'terkumpul';
   const hasFeedback = Boolean(d.feedbackUmum && d.feedbackUmum.trim().length > 0);
-  const hasMarks = d.teks && d.teks.includes('<mark');
-  const hasPenilaian = Boolean(d.penilaian);
-  if (d.status === 'Draf' && (hasFeedback || hasMarks || hasPenilaian)) {
+  const hasMarks = Boolean(d.teks && d.teks.includes('<mark'));
+  // Status Draf hanya dikategorikan sebagai 'revisi' jika sudah pernah dikumpulkan (dalam siklus revisi)
+  // ATAU nyata-nyata memiliki catatan bimbingan atau tag koreksi aktif dari guru.
+  // Draf awal siswa tanpa submission dan tanpa catatan guru tetap murni berstatus 'draf'.
+  if (d.status === 'Draf' && (Boolean(d.waktuKumpul) || hasFeedback || hasMarks)) {
     return 'revisi';
   }
   return 'draf';
@@ -61,16 +63,6 @@ interface TabKoreksiTugasProps {
   onOpenNewPenugasanModal?: () => void;
   onDokumenUpdated?: () => void;
 }
-
-// Template Saran Catatan Guru
-const CATATAN_TEMPLATES = [
-  { id: '1', label: 'Struktur Rapi', tag: '[struktur]', template: 'Alur cerita tersusun rapi dengan pengenalan dan klimaks yang memikat.' },
-  { id: '2', label: 'Diksi Memikat', tag: '[diksi]', template: 'Pilihan kata sangat bervariasi dan membangkitkan imajinasi pembaca.' },
-  { id: '3', label: 'Perhatikan EYD', tag: '[ejaan]', template: 'Perhatikan penulisan huruf kapital dan tanda baca titik-koma sesuai EYD.' },
-  { id: '4', label: 'Kembangkan Karakter', tag: '[karakter]', template: 'Penggambaran tokoh bisa diperdalam melalui dialog dan tindakan emosional.' },
-  { id: '5', label: 'Paragraf Padat', tag: '[kohesi]', template: 'Paragraf sudah kohesif, sambungan antargagasan terasa mengalir mulus.' },
-  { id: '6', label: 'Perlu Revisi Akhir', tag: '[revisi]', template: 'Coba baca ulang sekali lagi secara perlahan sebelum siap dipublikasikan.' },
-];
 
 const RUBRIC_ASPECTS = [
   { id: 'kedalamanGagasan', name: 'Kedalaman Gagasan', category: 'Makro' },
@@ -199,9 +191,84 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
     }
   };
 
-  const handleApplyTemplate = (templateText: string) => {
-    const nextVal = catatanUmum ? `${catatanUmum}\n${templateText}` : templateText;
+  // Slash Command '/' untuk Catatan Evaluasi Guru
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  const filteredSlashOptions = useMemo(() => {
+    if (!slashQuery.trim()) return TEACHER_FEEDBACK_OPTIONS;
+    const q = slashQuery.toLowerCase().trim();
+    return TEACHER_FEEDBACK_OPTIONS.filter((o) =>
+      o.label.toLowerCase().includes(q) ||
+      o.tag.toLowerCase().includes(q) ||
+      o.keywords.some((k) => k.includes(q))
+    );
+  }, [slashQuery]);
+
+  const handleCatatanTextChange = (text: string, targetEl?: HTMLTextAreaElement | null) => {
+    handleCatatanChange(text);
+    const textarea = targetEl || catatanTextareaRef.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart ?? text.length;
+    const textBefore = text.slice(0, cursor);
+    const match = textBefore.match(/\/([a-zA-Z0-9_]*)$/);
+    if (match) {
+      setSlashOpen(true);
+      setSlashQuery(match[1]);
+      setSlashIndex(0);
+    } else {
+      setSlashOpen(false);
+    }
+  };
+
+  const handleInsertCatatanOption = (opt: TeacherFeedbackOption, targetEl?: HTMLTextAreaElement | null) => {
+    const textarea = targetEl || catatanTextareaRef.current;
+    let nextVal = '';
+    if (textarea) {
+      const cursor = textarea.selectionStart ?? catatanUmum.length;
+      const textBefore = catatanUmum.slice(0, cursor);
+      const textAfter = catatanUmum.slice(cursor);
+      const cleanBefore = textBefore.replace(/\/([a-zA-Z0-9_]*)$/, '').trim();
+      const insertion = `${opt.tag} ${opt.template}`;
+      nextVal = cleanBefore 
+        ? `${cleanBefore}\n${insertion}${textAfter ? `\n${textAfter.trim()}` : ''}`
+        : `${insertion}${textAfter ? `\n${textAfter.trim()}` : ''}`;
+    } else {
+      const insertion = `${opt.tag} ${opt.template}`;
+      nextVal = catatanUmum.trim() ? `${catatanUmum.trim()}\n${insertion}` : insertion;
+    }
     handleCatatanChange(nextVal);
+    setSlashOpen(false);
+    setTimeout(() => {
+      if (textarea) textarea.focus();
+    }, 50);
+  };
+
+  const handleCatatanKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, targetEl?: HTMLTextAreaElement | null) => {
+    if (slashOpen && filteredSlashOptions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev + 1) % filteredSlashOptions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev - 1 + filteredSlashOptions.length) % filteredSlashOptions.length);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const selected = filteredSlashOptions[slashIndex];
+        if (selected) handleInsertCatatanOption(selected, targetEl);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSlashOpen(false);
+        return;
+      }
+    }
   };
 
   // Handler Tandai Semua Koreksi Telah Direvisi:
@@ -437,7 +504,18 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
             </h2>
             <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
               {selectedDoc ? (
-                <>Naskah: <strong>{selectedDoc.judul}</strong> oleh {selectedDoc.nama} (@{selectedDoc.username})</>
+                <>
+                  Naskah: <strong>{selectedDoc.judul}</strong> oleh {selectedDoc.nama}
+                  {selectedDoc.kolaborator && selectedDoc.kolaborator.length > 0 && (
+                    <> & {selectedDoc.kolaborator.map((k) => k.nama).join(', ')}</>
+                  )}
+                  {' '}(@{selectedDoc.username})
+                  {(selectedDoc.isKolaboratif || (selectedDoc.kolaborator && selectedDoc.kolaborator.length > 0)) && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                      👥 Kolaborasi
+                    </span>
+                  )}
+                </>
               ) : (
                 'Pilih siswa di antrean sebelah kiri untuk mulai membaca dan memberi catatan.'
               )}
@@ -472,7 +550,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
           {selectedDoc && (
             <button
               onClick={() => setIsFocusMode(true)}
-              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 dark:hover:bg-stone-200 px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
               title="Buka Mode Fokus Layar Penuh"
             >
               <Maximize2 size={13} /> <span className="hidden sm:inline">Mode Fokus</span>
@@ -542,7 +620,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   onClick={() => setQueueStatusFilter('semua')}
                   className={`py-1 px-1.5 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer text-center truncate ${
                     queueStatusFilter === 'semua'
-                      ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xs'
+                      ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 dark:border dark:border-stone-700 shadow-2xs'
                       : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
                   }`}
                   title="Tampilkan seluruh siswa di kelas"
@@ -645,7 +723,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                         }}
                         className={`p-2.5 rounded-xl text-left transition-all flex flex-col gap-1 cursor-pointer border ${
                           isSelected
-                            ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-stone-900 dark:border-stone-100 shadow-xs'
+                            ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 border-stone-900 dark:border-amber-500/70 shadow-xs'
                             : 'bg-stone-50/70 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800/60 border-stone-200/60 dark:border-stone-800/80 text-stone-800 dark:text-stone-200'
                         }`}
                       >
@@ -684,7 +762,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                         }}
                         className={`p-2.5 rounded-xl text-left transition-all flex flex-col gap-1 cursor-pointer border ${
                           isSelected
-                            ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-stone-900 dark:border-stone-100 shadow-xs'
+                            ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 border-stone-900 dark:border-amber-500/70 shadow-xs'
                             : 'bg-stone-50/70 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800/60 border-stone-200/60 dark:border-stone-800/80 text-stone-800 dark:text-stone-200'
                         }`}
                       >
@@ -694,7 +772,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                           </span>
                           <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                             isSelected
-                              ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900'
+                              ? 'bg-stone-800 text-white dark:bg-stone-700 dark:text-stone-200'
                               : cat === 'terkumpul'
                               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                               : cat === 'revisi'
@@ -718,7 +796,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                         {doc.judulTugas && (
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium truncate flex items-center gap-1 ${
                             isSelected
-                              ? 'bg-stone-800 text-blue-300 dark:bg-stone-200 dark:text-blue-700'
+                              ? 'bg-stone-800 text-blue-300 dark:bg-stone-750 dark:text-blue-300'
                               : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40'
                           }`}>
                             <BookOpen size={9} className="shrink-0" />
@@ -768,19 +846,19 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                               }}
                               className={`p-2 rounded-lg text-left transition-all flex flex-col gap-0.5 cursor-pointer border ${
                                 isThisDocSelected
-                                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-stone-900 dark:border-stone-100 shadow-xs'
+                                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 border-stone-900 dark:border-amber-500/60 shadow-xs'
                                   : 'bg-white dark:bg-stone-850 hover:bg-stone-100 dark:hover:bg-stone-800 border-stone-200/80 dark:border-stone-750 text-stone-800 dark:text-stone-200'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1 w-full">
                                 <span className={`text-[11px] font-serif-literary truncate italic flex-1 ${
-                                  isThisDocSelected ? 'text-white dark:text-stone-900 font-medium' : 'text-stone-700 dark:text-stone-300'
+                                  isThisDocSelected ? 'text-white dark:text-amber-400 font-medium' : 'text-stone-700 dark:text-stone-300'
                                 }`}>
                                   &quot;{doc.judul || 'Tanpa Judul'}&quot;
                                 </span>
                                 <span className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                                   isThisDocSelected
-                                    ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900'
+                                    ? 'bg-stone-800 text-white dark:bg-stone-700 dark:text-stone-200'
                                     : mCat === 'terkumpul'
                                     ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                                     : mCat === 'revisi'
@@ -796,7 +874,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                               {doc.judulTugas && (
                                 <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-medium truncate flex items-center gap-1 mt-0.5 ${
                                   isThisDocSelected
-                                    ? 'bg-stone-800 text-blue-300 dark:bg-stone-200 dark:text-blue-700'
+                                    ? 'bg-stone-800 text-blue-300 dark:bg-stone-750 dark:text-blue-300'
                                     : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40'
                                 }`}>
                                   <BookOpen size={8} className="shrink-0" />
@@ -890,8 +968,19 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   <h1 className="text-xl sm:text-2xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 leading-snug mb-1">
                     {selectedDoc.judul || 'Tanpa Judul'}
                   </h1>
-                  <div className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-2">
-                    <span>Penulis: <strong className="text-stone-800 dark:text-stone-200">{selectedDoc.nama}</strong> (@{selectedDoc.username || '-'})</span>
+                  <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2">
+                    <span>
+                      Penulis: <strong className="text-stone-800 dark:text-stone-200">{selectedDoc.nama}</strong>
+                      {selectedDoc.kolaborator && selectedDoc.kolaborator.length > 0 && (
+                        <> & {selectedDoc.kolaborator.map((k) => k.nama).join(', ')}</>
+                      )}
+                      {' '}(@{selectedDoc.username || '-'})
+                    </span>
+                    {(selectedDoc.isKolaboratif || (selectedDoc.kolaborator && selectedDoc.kolaborator.length > 0)) && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        👥 Tugas Kolaborasi
+                      </span>
+                    )}
                     <span className="text-stone-300 dark:text-stone-700">•</span>
                     <span className="text-[11px] font-mono text-stone-400">
                       {selectedDoc.status === 'Terkumpul' ? `Kumpul: ${selectedDoc.waktuKumpul || selectedDoc.waktuEdit || '-'}` : `Edit Terakhir: ${selectedDoc.waktuEdit || '-'}`}
@@ -1025,36 +1114,63 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                       <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
                         Umpan Balik Guru
                       </span>
-                      <span className="text-[10px] text-stone-400 font-mono">Preset saran ↓</span>
+                      <span className="text-[10px] text-stone-400 font-mono">Ketik / untuk variabel</span>
                     </div>
 
-                    <textarea
-                      ref={catatanTextareaRef}
-                      value={catatanUmum}
-                      onChange={(e) => handleCatatanChange(e.target.value)}
-                      placeholder="Tulis catatan apresiasi atau evaluasi untuk siswa..."
-                      rows={6}
-                      className="editorial-input w-full p-2.5 text-xs bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-750 dark:text-stone-100 rounded-xl leading-relaxed resize-none"
-                    />
+                    <div className="relative">
+                      <textarea
+                        ref={catatanTextareaRef}
+                        value={catatanUmum}
+                        onChange={(e) => handleCatatanTextChange(e.target.value)}
+                        onKeyDown={(e) => handleCatatanKeyDown(e)}
+                        placeholder="Tulis catatan apresiasi atau ketik / untuk aspek rubrik..."
+                        rows={7}
+                        className="editorial-input w-full p-2.5 text-xs bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-750 dark:text-stone-100 rounded-xl leading-relaxed resize-none"
+                      />
 
-                    {/* Template Saran Cepat */}
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                        Template Cepat:
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {CATATAN_TEMPLATES.map((tpl) => (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => handleApplyTemplate(tpl.template)}
-                            className="text-[10px] px-2 py-0.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer text-left"
-                            title={tpl.template}
-                          >
-                            + {tpl.label}
-                          </button>
-                        ))}
-                      </div>
+                      {/* Dropdown Slash Command Menu */}
+                      {slashOpen && filteredSlashOptions.length > 0 && (
+                        <div
+                          className="absolute left-0 right-0 bottom-full mb-1 z-50 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl shadow-2xl p-1.5 max-h-56 overflow-y-auto custom-scrollbar animate-in zoom-in-95"
+                        >
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
+                            <span>Pilih Variabel Rubrik (/{slashQuery})</span>
+                            <span className="text-[9px] text-stone-400 font-normal">Enter: Terapkan</span>
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            {filteredSlashOptions.map((opt, idx) => {
+                              const isSel = idx === slashIndex;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleInsertCatatanOption(opt);
+                                  }}
+                                  className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                    isSel
+                                      ? 'bg-amber-600 text-white dark:bg-amber-600 dark:text-white shadow-xs font-semibold'
+                                      : 'text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800'
+                                  }`}
+                                >
+                                  <div className="truncate mr-2">
+                                    <div className="font-semibold text-xs leading-tight">{opt.label}</div>
+                                    <div className={`text-[10px] truncate ${isSel ? 'text-amber-100' : 'text-stone-400 dark:text-stone-500'}`}>
+                                      {opt.template}
+                                    </div>
+                                  </div>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                                    isSel ? 'bg-amber-700 text-amber-100' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+                                  }`}>
+                                    {opt.tag}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-stone-400 pt-1 border-t border-stone-100 dark:border-stone-800">
@@ -1212,7 +1328,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                     </div>
                     <button
                       onClick={() => onTandaiSelesai(false)}
-                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:!text-stone-950 dark:hover:bg-stone-200 text-[11px] py-1.5 cursor-pointer justify-center shadow-xs"
+                      className="editorial-btn w-full bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 text-[11px] py-1.5 cursor-pointer justify-center shadow-xs"
                       title="Selesaikan bimbingan dan kunci naskah sebagai selesai"
                     >
                       <Check size={13} /> Tandai Selesai Langsung
@@ -1321,7 +1437,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
               <button
                 type="button"
                 onClick={() => handleNavigateQueue(1)}
-                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:!text-stone-950 px-3.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
+                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-3.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
                 title="Tugas Berikutnya"
               >
                 Berikutnya <ChevronRight size={14} />
@@ -1383,13 +1499,60 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                     <X size={15} />
                   </button>
                 </div>
-                <textarea
-                  value={catatanUmum}
-                  onChange={(e) => handleCatatanChange(e.target.value)}
-                  placeholder="Tulis catatan..."
-                  rows={4}
-                  className="editorial-input w-full p-2.5 text-xs bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-750 dark:text-stone-100 mb-2 rounded-lg"
-                />
+
+                <div className="relative">
+                  <textarea
+                    value={catatanUmum}
+                    onChange={(e) => handleCatatanTextChange(e.target.value, e.target)}
+                    onKeyDown={(e) => handleCatatanKeyDown(e, e.currentTarget)}
+                    placeholder="Tulis catatan (Ketik / untuk cari aspek rubrik)..."
+                    rows={4}
+                    className="editorial-input w-full p-2.5 text-xs bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-750 dark:text-stone-100 mb-2 rounded-lg resize-none"
+                  />
+
+                  {slashOpen && filteredSlashOptions.length > 0 && (
+                    <div
+                      className="absolute left-0 right-0 bottom-full mb-1 z-50 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl shadow-2xl p-1.5 max-h-52 overflow-y-auto custom-scrollbar animate-in zoom-in-95"
+                    >
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
+                        <span>Pilih Variabel Rubrik (/{slashQuery})</span>
+                        <span className="text-[9px] text-stone-400 font-normal">Enter: Terapkan</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        {filteredSlashOptions.map((opt, idx) => {
+                          const isSel = idx === slashIndex;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleInsertCatatanOption(opt);
+                              }}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                isSel
+                                  ? 'bg-amber-600 text-white dark:bg-amber-600 dark:text-white shadow-xs font-semibold'
+                                  : 'text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800'
+                              }`}
+                            >
+                              <div className="truncate mr-2">
+                                <div className="font-semibold text-xs leading-tight">{opt.label}</div>
+                                <div className={`text-[10px] truncate ${isSel ? 'text-amber-100' : 'text-stone-400 dark:text-stone-500'}`}>
+                                  {opt.template}
+                                </div>
+                              </div>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                                isSel ? 'bg-amber-700 text-amber-100' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+                              }`}>
+                                {opt.tag}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center justify-between text-[11px] text-stone-400">
                   <span className="flex items-center gap-1">
                     <CloudCheck size={12} /> Auto-save aktif

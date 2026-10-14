@@ -437,7 +437,7 @@ export const TeacherEditorView: React.FC<TeacherEditorViewProps> = ({
                 className={`editorial-btn py-2 px-5 text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs rounded-xl transition-all ${
                   isPublic
                     ? 'bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600'
-                    : 'bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200'
+                    : 'bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 dark:border dark:border-stone-700'
                 }`}
               >
                 {isPublic ? (

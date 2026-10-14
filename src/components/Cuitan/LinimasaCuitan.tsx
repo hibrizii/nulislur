@@ -381,7 +381,7 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
               <button
                 type="submit"
                 disabled={isSubmittingCuitan || !teksCuitan.trim()}
-                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-stone-200 dark:text-stone-900 disabled:opacity-40 disabled:cursor-not-allowed py-2 px-4 text-xs font-bold rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5 transition-all"
+                className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 disabled:opacity-40 disabled:cursor-not-allowed py-2 px-4 text-xs font-bold rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5 transition-all"
               >
                 <Send size={13} />
                 <span>Kirim Cuitan</span>
@@ -734,7 +734,7 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
                                           type="button"
                                           disabled={!replyInputText.trim()}
                                           onClick={handlePostReplyLevel2}
-                                          className="bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 disabled:opacity-40 px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer shrink-0"
+                                          className="bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 disabled:opacity-40 px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer shrink-0"
                                         >
                                           Kirim
                                         </button>
