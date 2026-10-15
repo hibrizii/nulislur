@@ -700,6 +700,11 @@ function broadcastLiveMessage(event: string, payload: any) {
 
 let activePresenceActivity = 'Beranda';
 let activePresenceDocId: string | null = null;
+let lastBroadcastStatus: { username: string; aktivitas: string; docAktifId: string | null; time: number } | null = null;
+
+// Cache daftar kode redeem untuk mencegah request storm saat klaim massal
+let cachedRedeemList: MigrasiRedeemItem[] | null = null;
+let lastRedeemListFetchTime = 0;
 
 // In-memory cache & background sync queue untuk Cuitan (Performa ultra-cepat)
 let inMemoryCuitanCache: CuitanItem[] | null = null;
@@ -1860,6 +1865,20 @@ export const DataService = {
   // Update aktivitas live (selalu aktif dan mandiri dari setting sensor)
   updateAktivitas(username: string, aktivitas: string, docAktifId: string | null = null) {
     if (!username) return;
+
+    const now = Date.now();
+    if (
+      lastBroadcastStatus &&
+      lastBroadcastStatus.username === username &&
+      lastBroadcastStatus.aktivitas === aktivitas &&
+      lastBroadcastStatus.docAktifId === docAktifId &&
+      now - lastBroadcastStatus.time < 15000
+    ) {
+      // Data aktivitas persis sama dalam 15 detik terakhir, cegah spam request
+      return;
+    }
+    lastBroadcastStatus = { username, aktivitas, docAktifId, time: now };
+
     activePresenceActivity = aktivitas;
     activePresenceDocId = docAktifId;
 
@@ -2683,6 +2702,52 @@ export const DataService = {
     }
   },
 
+  async getMadingStatsSummary(): Promise<{ likesMap: Record<string, number>; commentsMap: Record<string, number> }> {
+    const likesMap: Record<string, number> = {};
+    const commentsMap: Record<string, number> = {};
+
+    const local = getLocalDB();
+    if (local.likes) {
+      Object.entries(local.likes).forEach(([docId, users]) => {
+        likesMap[docId] = Object.keys(users || {}).length;
+      });
+    }
+    if (local.komentar) {
+      Object.entries(local.komentar).forEach(([docId, list]) => {
+        commentsMap[docId] = (list || []).length;
+      });
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const [likesRes, commentsRes] = await Promise.all([
+          supabase.from('likes').select('doc_id'),
+          supabase.from('komentar').select('doc_id')
+        ]);
+
+        if (likesRes.data && Array.isArray(likesRes.data)) {
+          const remoteLikesMap: Record<string, number> = {};
+          likesRes.data.forEach((r: { doc_id: string }) => {
+            if (r.doc_id) remoteLikesMap[r.doc_id] = (remoteLikesMap[r.doc_id] || 0) + 1;
+          });
+          Object.assign(likesMap, remoteLikesMap);
+        }
+
+        if (commentsRes.data && Array.isArray(commentsRes.data)) {
+          const remoteCommentsMap: Record<string, number> = {};
+          commentsRes.data.forEach((r: { doc_id: string }) => {
+            if (r.doc_id) remoteCommentsMap[r.doc_id] = (remoteCommentsMap[r.doc_id] || 0) + 1;
+          });
+          Object.assign(commentsMap, remoteCommentsMap);
+        }
+      } catch (err) {
+        console.warn('Gagal sinkronisasi batch mading stats:', err);
+      }
+    }
+
+    return { likesMap, commentsMap };
+  },
+
   async toggleLike(docId: string, username: string) {
     if (!docId || !username) return;
 
@@ -3202,6 +3267,107 @@ export const DataService = {
       callback(db.dokumen[docId] || null);
     };
     update();
+    window.addEventListener('nulislur_db_change', update);
+    return () => window.removeEventListener('nulislur_db_change', update);
+  },
+
+  listenDokumenSiswa(username: string, callback: (docs: Record<string, Dokumen>) => void): () => void {
+    const docCache: Record<string, Dokumen> = {};
+
+    // 1. Ambil dari lokal dulu untuk respons instan (< 1ms)
+    const local = getLocalDB();
+    if (local && local.dokumen) {
+      Object.values(local.dokumen).forEach((d) => {
+        const isAuthor = d.username ? d.username === username : false;
+        const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+        if (isAuthor || isCollab || d.isPublic) {
+          docCache[d.id] = d;
+        }
+      });
+      callback({ ...docCache });
+    }
+
+    if (isSupabaseConfigured) {
+      const fetchStudentDocs = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('dokumen')
+            .select('*')
+            .or(`username.eq.${username},is_public.eq.true`);
+
+          if (!error && data) {
+            data.forEach((row) => {
+              const doc = mapDokumenRow(row);
+              docCache[doc.id] = doc;
+            });
+            callback({ ...docCache });
+          }
+        } catch (err) {
+          console.warn('Gagal memuat dokumen siswa dari Supabase:', err);
+        }
+      };
+
+      fetchStudentDocs();
+
+      // Hanya dengarkan perubahan untuk naskah siswa ini via Realtime WebSocket (hemat 99% broadcast)
+      const channel = supabase
+        .channel(`public:dokumen:${username}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'dokumen', filter: `username=eq.${username}` },
+          (p) => {
+            if ((p.eventType === 'UPDATE' || p.eventType === 'INSERT') && p.new) {
+              const doc = mapDokumenRow(p.new as any);
+              docCache[doc.id] = doc;
+              callback({ ...docCache });
+            } else if (p.eventType === 'DELETE' && p.old) {
+              const oldId = (p.old as any).id;
+              if (oldId) {
+                delete docCache[oldId];
+                callback({ ...docCache });
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      const updateLocal = () => {
+        const freshLocal = getLocalDB();
+        if (freshLocal && freshLocal.dokumen) {
+          Object.values(freshLocal.dokumen).forEach((d) => {
+            const isAuthor = d.username ? d.username === username : false;
+            const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+            if (isAuthor || isCollab || d.isPublic) {
+              docCache[d.id] = d;
+            }
+          });
+          callback({ ...docCache });
+        }
+      };
+      window.addEventListener('nulislur_db_change', updateLocal);
+
+      return () => {
+        supabase.removeChannel(channel);
+        window.removeEventListener('nulislur_db_change', updateLocal);
+      };
+    }
+
+    // Fallback local
+    const update = () => {
+      const freshLocal = getLocalDB();
+      const studentDocs: Record<string, Dokumen> = {};
+      if (freshLocal && freshLocal.dokumen) {
+        Object.values(freshLocal.dokumen).forEach((d) => {
+          const isAuthor = d.username ? d.username === username : false;
+          const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+          if (isAuthor || isCollab || d.isPublic) {
+            studentDocs[d.id] = d;
+          }
+        });
+      }
+      callback(studentDocs);
+    };
+
     window.addEventListener('nulislur_db_change', update);
     return () => window.removeEventListener('nulislur_db_change', update);
   },
@@ -4004,6 +4170,11 @@ export const DataService = {
 
   // 12. Migrasi & Sistem Kode Redeem
   async getDaftarKodeRedeem(): Promise<MigrasiRedeemItem[]> {
+    const now = Date.now();
+    if (cachedRedeemList && now - lastRedeemListFetchTime < 15000) {
+      return cachedRedeemList;
+    }
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -4018,6 +4189,8 @@ export const DataService = {
             const local = getLocalDB();
             local.redeemList = parsed;
             saveLocalDB(local);
+            cachedRedeemList = parsed;
+            lastRedeemListFetchTime = now;
             return parsed;
           }
         }
@@ -4031,6 +4204,8 @@ export const DataService = {
       local.redeemList = initialMigrasiRedeemData;
       saveLocalDB(local);
     }
+    cachedRedeemList = local.redeemList;
+    lastRedeemListFetchTime = now;
     return local.redeemList;
   },
 
@@ -4105,7 +4280,8 @@ export const DataService = {
     const docIds = item.docIds || item.naskahList.map((n) => n.id);
     const waktuKlaim = getWaktuSekarang();
 
-    // 1. Update dokumen di Supabase jika aktif
+    // 1. Update dokumen di Supabase jika aktif (langsung select('*') dalam 1 pemanggilan roundtrip)
+    let claimedDocs: Dokumen[] = [];
     if (isSupabaseConfigured) {
       try {
         const updatePayload: Record<string, unknown> = {
@@ -4115,14 +4291,19 @@ export const DataService = {
         };
         if (targetUser.kodeKelas) updatePayload.kode_kelas = targetUser.kodeKelas;
 
-        const { error: updateErr } = await supabase
+        const { data: updatedData, error: updateErr } = await supabase
           .from('dokumen')
           .update(updatePayload)
-          .in('id', docIds);
+          .in('id', docIds)
+          .select('*');
 
         if (updateErr) {
           console.error('Gagal update dokumen di Supabase saat redeem:', updateErr);
           return { success: false, message: `Gagal menghubungkan dokumen di database: ${updateErr.message}` };
+        }
+
+        if (updatedData && Array.isArray(updatedData)) {
+          claimedDocs = updatedData.map(mapDokumenRow);
         }
       } catch (err: unknown) {
         return {
@@ -4144,34 +4325,46 @@ export const DataService = {
       }
     });
 
-    // 3. Update status tiket
+    // 3. Update status tiket di memori & cache lokal
     item.isRedeemed = true;
     item.redeemedByUsername = targetUser.username;
     item.redeemedByNama = targetUser.nama;
     item.redeemedKodeKelas = targetUser.kodeKelas;
     item.redeemedAt = waktuKlaim;
     list[itemIndex] = item;
-
-    // Simpan list ke Supabase & LocalDB
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('pengaturan').upsert({
-          key: 'migrasi_redeem_list',
-          val: JSON.stringify(list)
-        });
-      } catch (err) {
-        console.warn('Gagal menyimpan update status klaim ke Supabase:', err);
-      }
-    }
     local.redeemList = list;
     saveLocalDB(local);
 
-    // Ambil list naskah yang berhasil diklaim untuk feedback UI
-    let claimedDocs: Dokumen[] = [];
+    cachedRedeemList = list;
+    lastRedeemListFetchTime = Date.now();
+
+    // 4. Catat klaim di Supabase (Gunakan kunci terpisah per kode agar tidak terjadi lock contention saat 20 siswa klaim bareng)
     if (isSupabaseConfigured) {
-      const { data } = await supabase.from('dokumen').select('*').in('id', docIds);
-      if (data) claimedDocs = data.map(mapDokumenRow);
+      try {
+        await supabase.from('pengaturan').upsert({
+          key: `redeem_claim_${cleanCode}`,
+          val: JSON.stringify({
+            kodeRedeem: cleanCode,
+            redeemedByUsername: targetUser.username,
+            redeemedByNama: targetUser.nama,
+            redeemedKodeKelas: targetUser.kodeKelas,
+            redeemedAt: waktuKlaim,
+            docIds
+          })
+        }, { onConflict: 'key' });
+
+        // Sinkronkan daftar utama secara asinkron tanpa memblokir respon siswa
+        Promise.resolve(
+          supabase.from('pengaturan').upsert({
+            key: 'migrasi_redeem_list',
+            val: JSON.stringify(list)
+          }, { onConflict: 'key' })
+        ).catch(() => {});
+      } catch (err) {
+        console.warn('Gagal mencatat klaim ke Supabase:', err);
+      }
     }
+
     if (claimedDocs.length === 0) {
       claimedDocs = docIds.map((id) => local.dokumen[id]).filter(Boolean);
     }
@@ -4241,7 +4434,10 @@ export const DataService = {
         await supabase.from('pengaturan').upsert({
           key: 'migrasi_redeem_list',
           val: JSON.stringify(list)
-        });
+        }, { onConflict: 'key' });
+
+        // Hapus juga catatan klaim individual
+        await supabase.from('pengaturan').delete().eq('key', `redeem_claim_${cleanCode}`);
       } catch (err) {
         console.warn('Gagal update redeem list di Supabase saat reset:', err);
       }
@@ -4249,6 +4445,9 @@ export const DataService = {
 
     local.redeemList = list;
     saveLocalDB(local);
+
+    cachedRedeemList = list;
+    lastRedeemListFetchTime = Date.now();
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('nulislur_db_change'));

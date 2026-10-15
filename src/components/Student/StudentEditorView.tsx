@@ -347,7 +347,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     }
 
     const now = Date.now();
-    if (now - lastAktivitasUpdateRef.current > 4000) {
+    if (now - lastAktivitasUpdateRef.current > 30000) {
       lastAktivitasUpdateRef.current = now;
       DataService.updateAktivitas(
         username,
@@ -364,7 +364,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         setSaveStatus('saved');
         isDirtyRef.current = false;
       }
-    }, 600);
+    }, 3000);
   };
 
   // Debounced editor content update
@@ -376,7 +376,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     setSaveStatus('saving');
 
     const now = Date.now();
-    if (now - lastAktivitasUpdateRef.current > 4000) {
+    if (now - lastAktivitasUpdateRef.current > 30000) {
       lastAktivitasUpdateRef.current = now;
       DataService.updateAktivitas(
         username,
@@ -432,7 +432,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         setSaveStatus('saved');
         isDirtyRef.current = false;
       }
-    }, 600);
+    }, 3000);
   };
 
   // Handler Pemulihan Snapshot Cadangan (Disaster Recovery Rollback)

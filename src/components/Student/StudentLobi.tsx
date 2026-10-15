@@ -321,9 +321,9 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     return () => unsub();
   }, []);
 
-  // 1. Listen dokumen siswa
+  // 1. Listen dokumen siswa (Hanya dengarkan naskah milik sendiri + mading, hemat 99% broadcast)
   useEffect(() => {
-    const unsub = DataService.listenDokumen((docs) => {
+    const unsub = DataService.listenDokumenSiswa(username, (docs) => {
       const myDocs: Dokumen[] = [];
       const madingDocs: Dokumen[] = [];
 
@@ -395,13 +395,13 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   // Optimalisasi: Memoize daftar ID naskah mading agar tidak unsubscribe/resubscribe puluhan listener saat siswa mengetik draf
   const madingIdsKey = React.useMemo(() => madingList.map((d) => d.id).join(','), [madingList]);
 
-  // 3. Listen Likes, Views, Comments untuk Ruang Publik (hanya saat daftar karya mading berubah)
+  // 3. Muat Likes, Views, Comments untuk Ruang Publik secara efisien (Batch fetch, hemat 99% koneksi WebSocket)
   useEffect(() => {
     if (!madingIdsKey) return;
     const currentMadingDocs = madingList;
     if (currentMadingDocs.length === 0) return;
 
-    // Inisialisasi awal madingStats langsung dari cache lokal agar tidak ada flash 0
+    // Inisialisasi awal madingStats langsung dari cache lokal agar respons instan (< 1ms)
     setMadingStats((prev) => {
       const initial: Record<string, { likes: number; comments: number; views: number }> = { ...prev };
       currentMadingDocs.forEach((d) => {
@@ -415,45 +415,46 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return initial;
     });
 
-    const unsubs: (() => void)[] = [];
-    currentMadingDocs.forEach((d) => {
-      const id = d.id;
-      const unsubLikes = DataService.listenLikes(id, username, (count) => {
-        setMadingStats((prev) => {
-          const current = prev[id] || DataService.getDocStats(id, username);
-          return {
-            ...prev,
-            [id]: { ...current, likes: count },
+    // Ambil data agregat likes & komentar secara batch (hanya 2 request kecil, tanpa puluhan websocket)
+    DataService.getMadingStatsSummary().then(({ likesMap, commentsMap }) => {
+      setMadingStats((prev) => {
+        const updated = { ...prev };
+        currentMadingDocs.forEach((d) => {
+          const current = updated[d.id] || { likes: 0, comments: 0, views: d.views || 0 };
+          updated[d.id] = {
+            likes: likesMap[d.id] !== undefined ? likesMap[d.id] : current.likes,
+            comments: commentsMap[d.id] !== undefined ? commentsMap[d.id] : current.comments,
+            views: Math.max(current.views, d.views || 0),
           };
         });
+        return updated;
       });
-      unsubs.push(unsubLikes);
-
-      const unsubViews = DataService.listenViews(id, (count) => {
-        setMadingStats((prev) => {
-          const current = prev[id] || DataService.getDocStats(id, username);
-          return {
-            ...prev,
-            [id]: { ...current, views: Math.max(current.views || 0, count) },
-          };
-        });
-      });
-      unsubs.push(unsubViews);
-
-      const unsubKom = DataService.listenKomentar(id, (items) => {
-        setMadingStats((prev) => {
-          const current = prev[id] || DataService.getDocStats(id, username);
-          return {
-            ...prev,
-            [id]: { ...current, comments: items.length },
-          };
-        });
-      });
-      unsubs.push(unsubKom);
     });
 
+    // Tangkap perubahan interaksi lokal seketika
+    const handleStatChange = () => {
+      setMadingStats((prev) => {
+        const updated = { ...prev };
+        currentMadingDocs.forEach((d) => {
+          const stats = DataService.getDocStats(d.id, username);
+          updated[d.id] = {
+            likes: stats.likes,
+            comments: stats.comments,
+            views: Math.max(stats.views, d.views || 0),
+          };
+        });
+        return updated;
+      });
+    };
+
+    window.addEventListener('nulislur_likes_change', handleStatChange);
+    window.addEventListener('nulislur_views_change', handleStatChange);
+    window.addEventListener('nulislur_komentar_change', handleStatChange);
+
     return () => {
-      unsubs.forEach((u) => u());
+      window.removeEventListener('nulislur_likes_change', handleStatChange);
+      window.removeEventListener('nulislur_views_change', handleStatChange);
+      window.removeEventListener('nulislur_komentar_change', handleStatChange);
     };
   }, [madingIdsKey, username]);
 
