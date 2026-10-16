@@ -8,7 +8,6 @@ import { exportToPdf, exportToWord } from '../../utils/exportDocument';
 import { RevisionChecklistDrawer } from './RevisionChecklistDrawer';
 import { initCollabSession, type CollabPeer, type CollabSession } from '../../services/collabService';
 import { KelolaKolaboratorModal } from './KelolaKolaboratorModal';
-import { RiwayatCadanganModal, type DocumentSnapshot } from './RiwayatCadanganModal';
 import { 
   ArrowLeft, 
   CheckCircle, 
@@ -22,7 +21,6 @@ import {
   FileText,
   Users,
   Lock,
-  History,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -46,7 +44,6 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
   const [hoverFeedback, setHoverFeedback] = useState<HoverFeedbackData | null>(null);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState<boolean>(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [checklistVersion, setChecklistVersion] = useState(0);
 
   // State Kolaborasi Multi-Siswa
@@ -252,7 +249,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
           const words = clean ? clean.split(/\s+/).filter(Boolean).length : 0;
           lastSnapshotWordCountRef.current = words;
           if (!rawHist) {
-            const initialSnap: DocumentSnapshot = {
+            const initialSnap = {
               id: `init_${Date.now()}`,
               timestamp: Date.now(),
               waktu: getWaktuSekarang(),
@@ -405,7 +402,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       lastSnapshotWordCountRef.current = currentWordCount;
       try {
         const rawHistory = localStorage.getItem(`nulislur_history_${docId}`);
-        const historyList: DocumentSnapshot[] = rawHistory ? JSON.parse(rawHistory) : [];
+        const historyList: any[] = rawHistory ? JSON.parse(rawHistory) : [];
         historyList.unshift({
           id: `auto_${now}`,
           timestamp: now,
@@ -433,31 +430,6 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         isDirtyRef.current = false;
       }
     }, 3000);
-  };
-
-  // Handler Pemulihan Snapshot Cadangan (Disaster Recovery Rollback)
-  const handleRestoreSnapshot = (snap: DocumentSnapshot) => {
-    setJudul(snap.judul);
-    setTeks(snap.teks);
-    lastLocalJudulRef.current = snap.judul;
-    lastLocalTeksRef.current = snap.teks;
-    isDirtyRef.current = true;
-
-    // Trigger pemulihan teks di NulisEditor secara instan
-    window.dispatchEvent(
-      new CustomEvent('nulislur_restore_editor_content', {
-        detail: { docId, html: snap.teks },
-      })
-    );
-
-    // Segera simpan naskah yang dipulihkan ke database dan Yjs
-    DataService.simpanDokumen(docId, snap.judul, snap.teks);
-    if (collabSession) {
-      collabSession.broadcastTitleChange(snap.judul);
-      DataService.saveYjsDocState(docId, collabSession.getYjsState());
-    }
-    setSaveStatus('saved');
-    isDirtyRef.current = false;
   };
 
   // Handler Kembali dengan Flush Auto-Save Seketika (HANYA jika user benar-benar mengedit)
@@ -570,16 +542,6 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
                 </span>
               )}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setIsHistoryModalOpen(true)}
-              className="editorial-btn bg-stone-50 hover:bg-stone-100 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 py-1 px-2 text-xs flex items-center gap-1.5 rounded-lg cursor-pointer transition-colors shadow-2xs"
-              title="Buka Riwayat Cadangan & Titik Pemulihan Naskah (Disaster Recovery)"
-            >
-              <History size={13} className="text-purple-600 dark:text-purple-400" />
-              <span className="font-semibold text-[11px] hidden sm:inline">Riwayat Cadangan</span>
-            </button>
           </div>
 
           {/* Tombol Pop-Up Catatan Revisi Siswa (Jika Ada Catatan) */}
@@ -610,50 +572,41 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
             )}
           </div>
 
-          {/* Tombol Rekan Kolaborasi */}
-          {doc && (isCollabDoc || doc.status === 'Draf') && (
+          {/* Tombol Rekan Kolaborasi - Hanya untuk naskah kolaboratif */}
+          {doc && isCollabDoc && (
             <button
               type="button"
               onClick={() => setIsCollabModalOpen(true)}
               className="editorial-btn bg-stone-50 hover:bg-stone-100 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 py-1 px-2.5 text-xs flex items-center gap-2 rounded-lg cursor-pointer transition-colors shadow-2xs"
               title="Kelola Kolaborator Naskah"
             >
-              {isCollabDoc ? (
-                <>
-                  <div className="flex -space-x-1.5 items-center">
-                    <div
-                      className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
-                      style={{ backgroundColor: stringToColor(doc.username) }}
-                      title={`Pembuat: ${doc.nama}`}
-                    >
-                      {doc.nama.charAt(0).toUpperCase()}
-                    </div>
-                    {(doc.kolaborator || []).map((k) => (
-                      <div
-                        key={k.username}
-                        className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
-                        style={{ backgroundColor: k.warna || stringToColor(k.username) }}
-                        title={`Kolaborator: ${k.nama}`}
-                      >
-                        {k.nama.charAt(0).toUpperCase()}
-                      </div>
-                    ))}
+              <div className="flex -space-x-1.5 items-center">
+                <div
+                  className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
+                  style={{ backgroundColor: stringToColor(doc.username) }}
+                  title={`Pembuat: ${doc.nama}`}
+                >
+                  {doc.nama.charAt(0).toUpperCase()}
+                </div>
+                {(doc.kolaborator || []).map((k) => (
+                  <div
+                    key={k.username}
+                    className="w-5 h-5 rounded-full border-2 border-white dark:border-stone-900 flex items-center justify-center font-bold text-white text-[9px] shadow-xs"
+                    style={{ backgroundColor: k.warna || stringToColor(k.username) }}
+                    title={`Kolaborator: ${k.nama}`}
+                  >
+                    {k.nama.charAt(0).toUpperCase()}
                   </div>
-                  <span className="font-semibold text-[11px] flex items-center gap-1">
-                    <Users size={12} className="text-purple-600 dark:text-purple-400" />
-                    {(doc.kolaborator?.length || 0) + 1} Penulis
-                  </span>
-                  {onlinePeers.length > 1 && (
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      {onlinePeers.length} aktif
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="font-semibold text-[11px] flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
-                  <Users size={13} />
-                  + Ajak Teman Kolab
+                ))}
+              </div>
+              <span className="font-semibold text-[11px] flex items-center gap-1">
+                <Users size={12} className="text-purple-600 dark:text-purple-400" />
+                {(doc.kolaborator?.length || 0) + 1} Penulis
+              </span>
+              {onlinePeers.length > 1 && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {onlinePeers.length} aktif
                 </span>
               )}
             </button>
@@ -873,16 +826,6 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         doc={doc}
         currentUsername={username}
         kodeKelas={doc.kodeKelas}
-      />
-
-      {/* Modal Riwayat Cadangan Naskah (Disaster Recovery & Rolling History) */}
-      <RiwayatCadanganModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        docId={docId}
-        currentJudul={judul}
-        currentTeks={teks}
-        onRestore={handleRestoreSnapshot}
       />
     </div>
   );

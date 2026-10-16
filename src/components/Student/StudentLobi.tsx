@@ -973,25 +973,14 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         </span>
 
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {doc.status === 'Draf' && isPembuat && (
+                          {isCollabDoc && (
                             <button
                               type="button"
                               onClick={() => setManagingCollabDoc(doc)}
                               className="editorial-btn bg-stone-100 hover:bg-[#F3EFF8] text-stone-600 hover:text-[#594673] dark:bg-stone-800 dark:hover:bg-[#251E2E] dark:text-stone-300 dark:hover:text-[#CBBDE2] text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-                              title="Kelola Kolaborator"
+                              title={isPembuat ? 'Kelola Kolaborator' : 'Lihat Kolaborator'}
                             >
-                              <Users size={12} /> {isCollabDoc ? `Kolaborator (${(doc.kolaborator?.length || 0) + 1})` : '+ Ajak Kolab'}
-                            </button>
-                          )}
-
-                          {!isPembuat && isCollabDoc && (
-                            <button
-                              type="button"
-                              onClick={() => setManagingCollabDoc(doc)}
-                              className="editorial-btn bg-stone-100 hover:bg-[#F3EFF8] text-stone-600 hover:text-[#594673] dark:bg-stone-800 dark:hover:bg-[#251E2E] dark:text-stone-300 dark:hover:text-[#CBBDE2] text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-                              title="Lihat Tim Kolaborator"
-                            >
-                              <Users size={12} /> Tim ({(doc.kolaborator?.length || 0) + 1})
+                              <Users size={12} /> {isPembuat ? `Kolaborator (${(doc.kolaborator?.length || 0) + 1})` : `Tim (${(doc.kolaborator?.length || 0) + 1})`}
                             </button>
                           )}
 
