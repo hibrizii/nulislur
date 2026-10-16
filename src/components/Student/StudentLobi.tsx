@@ -96,7 +96,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   const [pengumumanList, setPengumumanList] = useState<Pengumuman[]>([]);
 
   // Filter & Search untuk Daftar Tugas Siswa
-  const [taskFilterStatus, setTaskFilterStatus] = useState<'semua' | 'revisi' | 'draf' | 'terkumpul' | 'selesai'>('semua');
+  const [taskFilterStatus, setTaskFilterStatus] = useState<'semua' | 'kolaborasi' | 'revisi' | 'draf' | 'terkumpul' | 'selesai'>('semua');
   const [taskSearchQuery, setTaskSearchQuery] = useState<string>('');
 
   // Versi reaktif checklist revisi siswa
@@ -207,8 +207,11 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     let terkumpul = 0;
     let selesai = 0;
     let publish = 0;
+    let kolaborasi = 0;
 
     dokumenList.forEach((d) => {
+      const isCollab = Boolean(d.isKolaboratif || (d.kolaborator && d.kolaborator.length > 0));
+      if (isCollab) kolaborasi++;
       const info = getDocStatusInfo(d);
       if (info.type === 'publish') publish++;
       if (info.type === 'selesai' || info.type === 'publish') selesai++;
@@ -217,7 +220,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       if (info.type === 'draf') draf++;
     });
 
-    return { revisi, draf, terkumpul, selesai, publish, total: dokumenList.length };
+    return { revisi, draf, terkumpul, selesai, publish, kolaborasi, total: dokumenList.length };
   }, [dokumenList, checklistVersion]);
 
   const filteredDokumenList = React.useMemo(() => {
@@ -226,6 +229,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       let matchFilter = true;
       if (taskFilterStatus === 'revisi') matchFilter = info.type === 'revisi';
       else if (taskFilterStatus === 'draf') matchFilter = info.type === 'draf';
+      else if (taskFilterStatus === 'kolaborasi') matchFilter = Boolean(doc.isKolaboratif || (doc.kolaborator && doc.kolaborator.length > 0));
       else if (taskFilterStatus === 'terkumpul') matchFilter = info.type === 'terkumpul';
       else if (taskFilterStatus === 'selesai') matchFilter = info.type === 'selesai' || info.type === 'publish';
 
@@ -364,7 +368,9 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       Object.values(docs).forEach((d) => {
         const isAuthor = d.username ? d.username === username : d.nama === nama;
-        const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+        const isCollab =
+          Boolean(d.kolaborator?.some((k) => k.username === username || (k as any) === username)) ||
+          Boolean(d.kolaboratorUsernames?.includes(username));
         if ((isAuthor || isCollab) && d.penulisKategori !== 'Guru') {
           myDocs.push(d);
         }
@@ -791,6 +797,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                 {[
                   { id: 'semua', label: 'Semua', count: dokumenList.length, alert: false },
+                  { id: 'kolaborasi', label: 'Kolaborasi', count: taskStats.kolaborasi, alert: false },
                   { id: 'revisi', label: 'Perlu Revisi', count: taskStats.revisi, alert: taskStats.revisi > 0 },
                   { id: 'draf', label: 'Draf', count: taskStats.draf, alert: false },
                   { id: 'terkumpul', label: 'Menunggu', count: taskStats.terkumpul, alert: false },
@@ -906,7 +913,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             )}
                             {isCollabDoc && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F3EFF8] dark:bg-[#251E2E] text-[#594673] dark:text-[#CBBDE2] shadow-2xs flex items-center gap-1">
-                                <Users size={10} /> Kolaborasi ({(doc.kolaborator?.length || 0) + 1})
+                                <Users size={10} /> {isPembuat ? `Kolaborasi (${(doc.kolaborator?.length || 0) + 1})` : `Diajak Kolab oleh ${doc.nama}`}
                               </span>
                             )}
                           </div>

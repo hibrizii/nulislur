@@ -2183,7 +2183,6 @@ export const DataService = {
       if (safeCollab) {
         payload.is_kolaboratif = true;
         payload.kolaborator = safeKolaborator;
-        payload.kolaborator_usernames = safeUsernames;
       }
 
       let insertRes = await supabase.from('dokumen').insert(payload).select('id').single();
@@ -2345,26 +2344,10 @@ export const DataService = {
         const payload: Record<string, unknown> = {
           is_kolaboratif: isCollab,
           kolaborator: kolaborator,
-          kolaborator_usernames: usernames,
         };
-        let updateRes = await supabase.from('dokumen').update(payload).eq('id', docId);
-        let error = updateRes.error;
-        let attempts = 0;
-        while (error && attempts < 4) {
-          attempts++;
-          const errMsg = error.message || '';
-          let colRemoved = false;
-          const match = errMsg.match(/Could not find the '([^']+)' column/i);
-          if (match && match[1] && match[1] in payload) {
-            delete payload[match[1]];
-            colRemoved = true;
-          }
-          if (colRemoved) {
-            updateRes = await supabase.from('dokumen').update(payload).eq('id', docId);
-            error = updateRes.error;
-          } else {
-            break;
-          }
+        const updateRes = await supabase.from('dokumen').update(payload).eq('id', docId);
+        if (updateRes.error) {
+          console.warn('Gagal update kolaborator ke Supabase:', updateRes.error.message);
         }
       } catch (e) {
         console.warn('Gagal update kolaborator ke Supabase:', e);
@@ -3325,12 +3308,18 @@ export const DataService = {
   listenDokumenSiswa(username: string, callback: (docs: Record<string, Dokumen>) => void): () => void {
     const docCache: Record<string, Dokumen> = {};
 
+    const checkIsCollab = (d: Dokumen): boolean => {
+      const byList = Array.isArray(d.kolaborator) && d.kolaborator.some((k) => k.username === username || (k as any) === username);
+      const byUsernames = Array.isArray(d.kolaboratorUsernames) && d.kolaboratorUsernames.includes(username);
+      return byList || byUsernames;
+    };
+
     // 1. Ambil dari lokal dulu untuk respons instan (< 1ms)
     const local = getLocalDB();
     if (local && local.dokumen) {
       Object.values(local.dokumen).forEach((d) => {
         const isAuthor = d.username ? d.username === username : false;
-        const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+        const isCollab = checkIsCollab(d);
         if (isAuthor || isCollab || d.isPublic) {
           docCache[d.id] = d;
         }
@@ -3341,16 +3330,62 @@ export const DataService = {
     if (isSupabaseConfigured) {
       const fetchStudentDocs = async () => {
         try {
-          const { data, error } = await supabase
-            .from('dokumen')
-            .select('*')
-            .or(`username.eq.${username},is_public.eq.true`);
+          // Ambil dokumen sendiri + mading publik DAN dokumen kolaborasi
+          const [ownRes, collabRes, jsonbRes] = await Promise.all([
+            supabase
+              .from('dokumen')
+              .select('*')
+              .or(`username.eq.${username},is_public.eq.true`),
+            supabase
+              .from('dokumen')
+              .select('*')
+              .eq('is_kolaboratif', true),
+            supabase
+              .from('dokumen')
+              .select('*')
+              .contains('kolaborator', JSON.stringify([{ username }])),
+          ]);
 
-          if (!error && data) {
-            data.forEach((row) => {
+          let hasChanges = false;
+          if (!ownRes.error && ownRes.data) {
+            ownRes.data.forEach((row) => {
               const doc = mapDokumenRow(row);
               docCache[doc.id] = doc;
+              hasChanges = true;
             });
+          }
+
+          const processCollabRows = (rows: any[] | null) => {
+            if (!rows) return;
+            rows.forEach((row) => {
+              const doc = mapDokumenRow(row);
+              const isCollab = checkIsCollab(doc) || doc.username === username;
+              if (isCollab) {
+                docCache[doc.id] = doc;
+                hasChanges = true;
+              }
+            });
+          };
+
+          if (!collabRes.error && collabRes.data) {
+            processCollabRows(collabRes.data);
+          }
+          if (!jsonbRes.error && jsonbRes.data) {
+            processCollabRows(jsonbRes.data);
+          }
+
+          // Sinkronkan ke local DB agar offline & re-render instan
+          try {
+            const freshLocal = getLocalDB();
+            if (freshLocal?.dokumen) {
+              Object.values(docCache).forEach((d) => {
+                freshLocal.dokumen[d.id] = d;
+              });
+              saveLocalDB(freshLocal);
+            }
+          } catch {}
+
+          if (hasChanges) {
             callback({ ...docCache });
           }
         } catch (err) {
@@ -3360,9 +3395,11 @@ export const DataService = {
 
       fetchStudentDocs();
 
-      // Hanya dengarkan perubahan untuk naskah siswa ini via Realtime WebSocket (hemat 99% broadcast)
+      // Dengarkan perubahan dokumen siswa:
+      // 1) Dokumen milik sendiri (username=eq.${username})
+      // 2) Dokumen kolaboratif (is_kolaboratif=eq.true)
       const channel = supabase
-        .channel(`public:dokumen:${username}`)
+        .channel(`public:dokumen:${username}:${Date.now()}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'dokumen', filter: `username=eq.${username}` },
@@ -3370,10 +3407,48 @@ export const DataService = {
             if ((p.eventType === 'UPDATE' || p.eventType === 'INSERT') && p.new) {
               const doc = mapDokumenRow(p.new as any);
               docCache[doc.id] = doc;
+              try {
+                const freshLocal = getLocalDB();
+                if (freshLocal?.dokumen) {
+                  freshLocal.dokumen[doc.id] = doc;
+                  saveLocalDB(freshLocal);
+                }
+              } catch {}
               callback({ ...docCache });
             } else if (p.eventType === 'DELETE' && p.old) {
               const oldId = (p.old as any).id;
               if (oldId) {
+                delete docCache[oldId];
+                callback({ ...docCache });
+              }
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'dokumen', filter: 'is_kolaboratif=eq.true' },
+          (p) => {
+            if ((p.eventType === 'UPDATE' || p.eventType === 'INSERT') && p.new) {
+              const doc = mapDokumenRow(p.new as any);
+              const isCollab = checkIsCollab(doc) || doc.username === username;
+              if (isCollab) {
+                docCache[doc.id] = doc;
+                try {
+                  const freshLocal = getLocalDB();
+                  if (freshLocal?.dokumen) {
+                    freshLocal.dokumen[doc.id] = doc;
+                    saveLocalDB(freshLocal);
+                  }
+                } catch {}
+                callback({ ...docCache });
+              } else if (docCache[doc.id] && doc.username !== username) {
+                // Siswa dikeluarkan dari tim kolaborasi naskah
+                delete docCache[doc.id];
+                callback({ ...docCache });
+              }
+            } else if (p.eventType === 'DELETE' && p.old) {
+              const oldId = (p.old as any).id;
+              if (oldId && docCache[oldId]) {
                 delete docCache[oldId];
                 callback({ ...docCache });
               }
@@ -3387,7 +3462,7 @@ export const DataService = {
         if (freshLocal && freshLocal.dokumen) {
           Object.values(freshLocal.dokumen).forEach((d) => {
             const isAuthor = d.username ? d.username === username : false;
-            const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+            const isCollab = checkIsCollab(d);
             if (isAuthor || isCollab || d.isPublic) {
               docCache[d.id] = d;
             }
@@ -3410,7 +3485,7 @@ export const DataService = {
       if (freshLocal && freshLocal.dokumen) {
         Object.values(freshLocal.dokumen).forEach((d) => {
           const isAuthor = d.username ? d.username === username : false;
-          const isCollab = d.kolaboratorUsernames ? d.kolaboratorUsernames.includes(username) : d.kolaborator?.some((k) => k.username === username);
+          const isCollab = checkIsCollab(d);
           if (isAuthor || isCollab || d.isPublic) {
             studentDocs[d.id] = d;
           }
