@@ -1,4 +1,24 @@
-export type UserRole = 'guru' | 'siswa';
+export type UserRole = 'admin' | 'guru' | 'siswa';
+
+export interface FiturPaketSekolah {
+  kolaborasi: boolean;
+  cuitan: boolean;
+  antiCurang: boolean;
+  eksporResmi: boolean;
+  maxKelas: number;
+  maxSiswaPerKelas: number;
+}
+
+export interface Sekolah {
+  id: string; // misal: 'sman1-gondanglegi'
+  namaSekolah: string;
+  npsn?: string;
+  jenjang?: 'SMA' | 'SMK' | 'MA' | 'SMP' | 'SD' | 'Umum';
+  paket: 'free' | 'starter' | 'pro' | 'enterprise';
+  status: 'aktif' | 'nonaktif';
+  fitur: FiturPaketSekolah;
+  waktuDaftar: string;
+}
 
 export interface UserAccount {
   username: string;
@@ -7,6 +27,8 @@ export interface UserAccount {
   password?: string;
   kodeKelas?: string;
   namaKelas?: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   waktuDaftar?: string;
 }
 
@@ -16,6 +38,8 @@ export interface UserSession {
   role: UserRole;
   kodeKelas?: string;
   namaKelas?: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   sessionId: string;
 }
 
@@ -25,6 +49,8 @@ export interface KelasRoom {
   namaKelas: string;
   guruUsername: string;
   namaGuru: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   waktuDibuat: string;
   siswaCount?: number;
   coTeachers?: string[];
@@ -82,6 +108,8 @@ export interface Dokumen {
   kodeKelas?: string;
   kelas?: string;
   namaKelas?: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   judul: string;
   teks: string;
   status: 'Draf' | 'Terkumpul' | 'Selesai';
@@ -132,6 +160,8 @@ export interface Pengumuman {
   waktu: string;
   kodeKelas?: string;
   tugasId?: string | null;
+  sekolahId?: string;
+  namaSekolah?: string;
 }
 
 export interface GlobalSettings {
@@ -178,6 +208,8 @@ export interface CuitanItem {
   createdAt?: number;
   kodeKelas?: string;
   namaKelas?: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   likes: string[];
   komentar: CuitanKomentar[];
 }

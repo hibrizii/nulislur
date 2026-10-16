@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import type { Dokumen, UserAccount, KelasRoom, LiveStatus, PenilaianRubrik, MigrasiRedeemItem, Penugasan, Pengumuman, CuitanItem, CuitanKomentar, KolaboratorAnggota } from '../types';
+import type { Dokumen, UserAccount, UserRole, KelasRoom, LiveStatus, PenilaianRubrik, MigrasiRedeemItem, Penugasan, Pengumuman, CuitanItem, CuitanKomentar, KolaboratorAnggota, Sekolah, FiturPaketSekolah } from '../types';
 import { initialMigrasiRedeemData } from '../data/migrasi_redeem_data';
 import { uint8ArrayToBase64, base64ToUint8Array } from '../utils/binaryUtils';
 import { cleanTitle } from '../utils/exportDocument';
@@ -789,12 +789,30 @@ export const DataService = {
           return { success: false, message: 'Kata sandi tidak cocok. Silakan coba lagi.' };
         }
 
+        let role: UserRole = (data.role as UserRole) || 'siswa';
+        // Akun hibri otomatis memiliki akses admin
+        if (username === 'hibri' || username === 'admin') {
+          role = 'admin';
+        } else {
+          try {
+            const { data: adminSetting } = await supabase.from('pengaturan').select('val').eq('key', 'admin_users').maybeSingle();
+            if (adminSetting?.val) {
+              const admins = JSON.parse(adminSetting.val);
+              if (Array.isArray(admins) && admins.includes(username)) {
+                role = 'admin';
+              }
+            }
+          } catch {}
+        }
+
         const user: UserAccount = {
           username: data.username,
           nama: data.nama,
-          role: data.role,
+          role,
           kodeKelas: data.kode_kelas,
           namaKelas: data.nama_kelas,
+          sekolahId: data.sekolah_id || 'sman1-gondanglegi',
+          namaSekolah: data.nama_sekolah || 'SMA Negeri 1 Gondanglegi',
           waktuDaftar: data.created_at
         };
 
@@ -812,6 +830,9 @@ export const DataService = {
     }
     if (user.password !== password) {
       return { success: false, message: 'Kata sandi tidak cocok.' };
+    }
+    if (username === 'hibri' || username === 'admin') {
+      user.role = 'admin';
     }
     return { success: true, user };
   },
@@ -2962,7 +2983,7 @@ export const DataService = {
   },
 
   // 7. Pengumuman
-  async tambahPengumuman(teks: string, kodeKelas?: string, tugasId?: string | null) {
+  async tambahPengumuman(teks: string, kodeKelas?: string, tugasId?: string | null, sekolahId?: string) {
     const waktu = getWaktuSekarang();
     const id = 'p_' + Date.now();
     const newPengumumanItem: Pengumuman = {
@@ -2971,6 +2992,7 @@ export const DataService = {
       waktu,
       kodeKelas: kodeKelas || 'Umum',
       tugasId: tugasId || null,
+      sekolahId: sekolahId || undefined,
     };
 
     // 1. Selalu simpan ke localDB terlebih dahulu (optimistic local save)
@@ -2987,11 +3009,18 @@ export const DataService = {
         kode_kelas: kodeKelas || 'Umum',
       };
       if (tugasId) payload.tugas_id = tugasId;
+      if (sekolahId) payload.sekolah_id = sekolahId;
 
       try {
         let { error } = await supabase.from('pengumuman').insert(payload);
-        if (error && error.message && error.message.includes('tugas_id')) {
-          delete payload.tugas_id;
+        if (error) {
+          const errMsg = error.message || '';
+          if (errMsg.includes('sekolah_id')) {
+            delete payload.sekolah_id;
+          }
+          if (errMsg.includes('tugas_id')) {
+            delete payload.tugas_id;
+          }
           await supabase.from('pengumuman').insert(payload);
         }
       } catch (err) {
@@ -3698,7 +3727,8 @@ export const DataService = {
         teks,
         waktu: String(item.waktu || ''),
         kodeKelas: item.kode_kelas || item.kodeKelas,
-        tugasId
+        tugasId,
+        sekolahId: item.sekolah_id || item.sekolahId || undefined
       };
     };
 
@@ -4656,10 +4686,12 @@ export const DataService = {
 
   async tambahCuitan(params: {
     username: string;
-    role: 'siswa' | 'guru';
+    role: 'siswa' | 'guru' | 'admin';
     teks: string;
     kodeKelas?: string;
     namaKelas?: string;
+    sekolahId?: string;
+    namaSekolah?: string;
   }): Promise<{ success: boolean; message: string; cuitan?: CuitanItem }> {
     const cleanTeks = params.teks.trim();
     if (!cleanTeks) {
@@ -4696,6 +4728,8 @@ export const DataService = {
       createdAt: now,
       kodeKelas: params.kodeKelas || 'Umum',
       namaKelas: params.namaKelas,
+      sekolahId: params.sekolahId,
+      namaSekolah: params.namaSekolah,
       likes: [],
       komentar: [],
     };
@@ -4941,6 +4975,252 @@ export const DataService = {
       console.warn('Gagal membaca state Yjs dokumen:', e);
     }
     return null;
+  },
+
+  // ==============================================================================
+  // FITUR MANAJEMEN MULTI-SEKOLAH & ROLE ADMIN (PRICING & AKSES GURU)
+  // ==============================================================================
+
+  async getDaftarSekolah(): Promise<Sekolah[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('pengaturan').select('val').eq('key', 'sekolah_list').maybeSingle();
+        if (data && data.val) {
+          const list = JSON.parse(data.val);
+          if (Array.isArray(list) && list.length > 0) return list;
+        }
+      } catch (e) {
+        console.warn('Gagal memuat sekolah_list:', e);
+      }
+    }
+    return [
+      {
+        id: 'sman1-gondanglegi',
+        namaSekolah: 'SMA Negeri 1 Gondanglegi',
+        npsn: '20517758',
+        jenjang: 'SMA',
+        paket: 'pro',
+        status: 'aktif',
+        fitur: {
+          kolaborasi: true,
+          cuitan: true,
+          antiCurang: true,
+          eksporResmi: true,
+          maxKelas: 15,
+          maxSiswaPerKelas: 45
+        },
+        waktuDaftar: '16 Okt 2026'
+      }
+    ];
+  },
+
+  listenSekolah(callback: (list: Sekolah[]) => void): () => void {
+    const fetchAndCallback = async () => {
+      const list = await this.getDaftarSekolah();
+      callback(list);
+    };
+    fetchAndCallback();
+
+    if (isSupabaseConfigured) {
+      const channel = supabase
+        .channel('public:pengaturan:sekolah_list')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pengaturan', filter: 'key=eq.sekolah_list' }, () => {
+          fetchAndCallback();
+        })
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+
+    const handler = () => fetchAndCallback();
+    window.addEventListener('nulislur_db_change', handler);
+    return () => window.removeEventListener('nulislur_db_change', handler);
+  },
+
+  async simpanSekolah(sekolah: Sekolah): Promise<{ success: boolean; message: string }> {
+    try {
+      const current = await this.getDaftarSekolah();
+      const idx = current.findIndex(s => s.id === sekolah.id);
+      if (idx >= 0) {
+        current[idx] = sekolah;
+      } else {
+        current.unshift(sekolah);
+      }
+      if (isSupabaseConfigured) {
+        await supabase.from('pengaturan').upsert({
+          key: 'sekolah_list',
+          val: JSON.stringify(current)
+        });
+      }
+      window.dispatchEvent(new Event('nulislur_db_change'));
+      return { success: true, message: `Sekolah "${sekolah.namaSekolah}" berhasil disimpan!` };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Gagal menyimpan sekolah.' };
+    }
+  },
+
+  async hapusSekolah(sekolahId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const current = await this.getDaftarSekolah();
+      const filtered = current.filter(s => s.id !== sekolahId);
+      if (isSupabaseConfigured) {
+        await supabase.from('pengaturan').upsert({
+          key: 'sekolah_list',
+          val: JSON.stringify(filtered)
+        });
+      }
+      window.dispatchEvent(new Event('nulislur_db_change'));
+      return { success: true, message: 'Sekolah berhasil dihapus.' };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Gagal menghapus sekolah.' };
+    }
+  },
+
+  async getFiturSekolah(sekolahId?: string): Promise<FiturPaketSekolah> {
+    const list = await this.getDaftarSekolah();
+    const target = list.find(s => s.id === (sekolahId || 'sman1-gondanglegi'));
+    if (target && target.fitur) return target.fitur;
+    return {
+      kolaborasi: true,
+      cuitan: true,
+      antiCurang: true,
+      eksporResmi: true,
+      maxKelas: 15,
+      maxSiswaPerKelas: 45
+    };
+  },
+
+  async getSemuaGuru(): Promise<UserAccount[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('users').select('*').in('role', ['guru', 'admin']);
+        if (data) {
+          return data.map(u => ({
+            username: u.username,
+            nama: u.nama,
+            role: (u.username === 'hibri' ? 'admin' : u.role) as UserRole,
+            kodeKelas: u.kode_kelas,
+            namaKelas: u.nama_kelas,
+            sekolahId: u.sekolah_id || 'sman1-gondanglegi',
+            namaSekolah: u.nama_sekolah || 'SMA Negeri 1 Gondanglegi',
+            waktuDaftar: u.created_at
+          }));
+        }
+      } catch (e) {
+        console.warn('Gagal memuat daftar guru:', e);
+      }
+    }
+    const local = getLocalDB();
+    return Object.values(local.users).filter(u => u.role === 'guru' || u.role === 'admin');
+  },
+
+  async tambahAkunGuru(nama: string, username: string, password: string, sekolahId: string, namaSekolah: string): Promise<{ success: boolean; message: string }> {
+    const cleanUser = username.trim().toLowerCase();
+    const cleanNama = nama.trim();
+    if (!cleanUser || !cleanNama || !password) {
+      return { success: false, message: 'Harap lengkapi semua bidang.' };
+    }
+    if (isSupabaseConfigured) {
+      try {
+        const { data: existing } = await supabase.from('users').select('username').eq('username', cleanUser).maybeSingle();
+        if (existing) {
+          return { success: false, message: `Username "${cleanUser}" sudah digunakan.` };
+        }
+        const { error } = await supabase.from('users').insert({
+          username: cleanUser,
+          nama: cleanNama,
+          password: password.trim(),
+          role: 'guru',
+          sekolah_id: sekolahId,
+          nama_sekolah: namaSekolah
+        });
+        if (error) {
+          await supabase.from('users').insert({
+            username: cleanUser,
+            nama: cleanNama,
+            password: password.trim(),
+            role: 'guru'
+          });
+        }
+        return { success: true, message: `Akun Guru "${cleanNama}" (@${cleanUser}) berhasil dibuat!` };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Gagal menambahkan akun guru.' };
+      }
+    }
+    const local = getLocalDB();
+    if (local.users[cleanUser]) {
+      return { success: false, message: `Username "${cleanUser}" sudah ada.` };
+    }
+    local.users[cleanUser] = {
+      username: cleanUser,
+      nama: cleanNama,
+      password: password.trim(),
+      role: 'guru',
+      sekolahId,
+      namaSekolah
+    };
+    saveLocalDB(local);
+    return { success: true, message: `Akun Guru "${cleanNama}" berhasil dibuat!` };
+  },
+
+  async resetPasswordUser(targetUsername: string, newPass: string): Promise<{ success: boolean; message: string }> {
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('users').update({ password: newPass.trim() }).eq('username', targetUsername.trim().toLowerCase());
+        return { success: true, message: `Kata sandi untuk @${targetUsername} berhasil direset.` };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Gagal mereset kata sandi.' };
+      }
+    }
+    const local = getLocalDB();
+    if (local.users[targetUsername]) {
+      local.users[targetUsername].password = newPass.trim();
+      saveLocalDB(local);
+      return { success: true, message: 'Kata sandi berhasil direset.' };
+    }
+    return { success: false, message: 'Akun tidak ditemukan.' };
+  },
+
+  async getPlatformStats(): Promise<{ totalSekolah: number; totalGuru: number; totalSiswa: number; totalDokumen: number; totalCuitan: number }> {
+    let totalSekolah = 1;
+    let totalGuru = 1;
+    let totalSiswa = 0;
+    let totalDokumen = 0;
+    let totalCuitan = 0;
+
+    try {
+      const sekolah = await this.getDaftarSekolah();
+      totalSekolah = sekolah.length;
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      try {
+        const [{ count: gCount }, { count: sCount }, { count: dCount }] = await Promise.all([
+          supabase.from('users').select('*', { count: 'exact', head: true }).in('role', ['guru', 'admin']),
+          supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'siswa'),
+          supabase.from('dokumen').select('*', { count: 'exact', head: true })
+        ]);
+        if (gCount !== null) totalGuru = gCount;
+        if (sCount !== null) totalSiswa = sCount;
+        if (dCount !== null) totalDokumen = dCount;
+
+        const { data: cuitanData } = await supabase.from('pengaturan').select('val').eq('key', 'cuitan_list').maybeSingle();
+        if (cuitanData?.val) {
+          const list = JSON.parse(cuitanData.val);
+          if (Array.isArray(list)) totalCuitan = list.length;
+        }
+      } catch (e) {
+        console.warn('Gagal memuat platform stats:', e);
+      }
+    } else {
+      const local = getLocalDB();
+      const users = Object.values(local.users);
+      totalGuru = users.filter(u => u.role === 'guru' || u.role === 'admin').length;
+      totalSiswa = users.filter(u => u.role === 'siswa').length;
+      totalDokumen = Object.keys(local.dokumen).length;
+      totalCuitan = local.cuitanList ? local.cuitanList.length : 0;
+    }
+
+    return { totalSekolah, totalGuru, totalSiswa, totalDokumen, totalCuitan };
   }
 };
 

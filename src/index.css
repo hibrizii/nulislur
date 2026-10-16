@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@theme {
+  --color-stone-750: #262423;
+  --color-stone-850: #181716;
+  --color-stone-880: #141312;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
@@ -1058,21 +1064,34 @@ table.nulis-table td.nulis-table-page-break-cell {
   color: #71717A;
 }
 
-/* Highlight Koreksi Guru (Tegas & Rata Naskah) */
+/* Highlight Koreksi Guru (Pastel Editorial & Nyaman di Mata) */
 mark, .tiptap mark {
-  background-color: #FDE047;
-  border-bottom: 2px solid #CA8A04;
-  padding: 0;
+  background-color: #FEF3C7;
+  border-bottom: 2px solid #D97706;
+  padding: 0.05em 0.2em;
   margin: 0;
-  border-radius: 0;
-  color: inherit;
-  font-weight: inherit;
+  border-radius: 2px;
+  color: #78350F;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 mark:hover, .tiptap mark:hover {
-  background-color: #FACC15;
+  background-color: #FDE68A;
+  border-bottom-color: #B45309;
+}
+
+.dark mark, .dark .tiptap mark {
+  background-color: rgba(217, 119, 6, 0.28) !important;
+  border-bottom: 2px solid #F59E0B !important;
+  color: #FDE68A !important;
+  font-weight: 500;
+}
+
+.dark mark:hover, .dark .tiptap mark:hover {
+  background-color: rgba(217, 119, 6, 0.42) !important;
+  border-bottom-color: #FBBF24 !important;
 }
 
 /* Highlight Koreksi Guru yang Sudah Direvisi Siswa (Nuansa Abu-abu Tipis & Nyaris Tak Terlihat) */

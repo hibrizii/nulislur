@@ -18,9 +18,11 @@ interface LinimasaCuitanProps {
   currentUser: {
     username: string;
     nama: string;
-    role: 'siswa' | 'guru';
+    role: 'siswa' | 'guru' | 'admin';
     kodeKelas?: string;
     namaKelas?: string;
+    sekolahId?: string;
+    namaSekolah?: string;
   };
 }
 
@@ -69,7 +71,7 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
 
   // 2. Cek apakah user (siswa) sudah membuat cuitan hari ini
   const hasPostedToday = useMemo(() => {
-    if (currentUser.role === 'guru') return false; // Guru bebas cuit tanpa batas
+    if (currentUser.role === 'guru' || currentUser.role === 'admin') return false; // Guru & Admin bebas cuit
     const cleanCurrent = currentUser.username.toLowerCase();
     return cuitanList.some(
       (c) => c.username.toLowerCase() === cleanCurrent && DataService.isCuitanHariIni(c)
@@ -94,8 +96,15 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
     }
   };
 
-  // 3. Linimasa Publik (Cuitan bersifat publik untuk seluruh sekolah)
-  const filteredCuitan = cuitanList;
+  // 3. Linimasa Sekolah (Cuitan terisolasi per sekolah)
+  const filteredCuitan = useMemo(() => {
+    return cuitanList.filter((c) => {
+      if (currentUser.sekolahId && c.sekolahId) {
+        return c.sekolahId === currentUser.sekolahId;
+      }
+      return true;
+    });
+  }, [cuitanList, currentUser.sekolahId]);
 
   // Handler Like Cuitan (Seketika < 1ms Optimistic UI)
   const handleToggleLikeCuitan = (cuitanId: string) => {
@@ -172,6 +181,8 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
       createdAt: Date.now(),
       kodeKelas: currentUser.kodeKelas || 'Umum',
       namaKelas: currentUser.namaKelas,
+      sekolahId: currentUser.sekolahId,
+      namaSekolah: currentUser.namaSekolah,
       likes: [],
       komentar: [],
     };
@@ -186,6 +197,8 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
         teks: textToSend,
         kodeKelas: currentUser.kodeKelas,
         namaKelas: currentUser.namaKelas,
+        sekolahId: currentUser.sekolahId,
+        namaSekolah: currentUser.namaSekolah,
       });
 
       if (!res.success) {

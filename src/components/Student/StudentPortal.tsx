@@ -149,6 +149,8 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({ user, onLogout }) 
           username={currentStudentUser.username}
           kodeKelas={currentStudentUser.kodeKelas}
           namaKelas={currentStudentUser.namaKelas}
+          sekolahId={currentStudentUser.sekolahId}
+          namaSekolah={currentStudentUser.namaSekolah}
           initialTab={lobiTab}
           onTabChange={(tab) => {
             setLobiTab(tab);

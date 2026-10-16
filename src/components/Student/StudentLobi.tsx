@@ -41,6 +41,8 @@ interface StudentLobiProps {
   username: string;
   kodeKelas?: string;
   namaKelas?: string;
+  sekolahId?: string;
+  namaSekolah?: string;
   initialTab?: 'karya' | 'perkembangan' | 'mading' | 'cuitan';
   onTabChange?: (tab: 'karya' | 'perkembangan' | 'mading' | 'cuitan') => void;
   highlightDocId?: string | null;
@@ -55,6 +57,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   username,
   kodeKelas,
   namaKelas,
+  sekolahId,
+  namaSekolah,
   initialTab = 'karya',
   onTabChange,
   highlightDocId,
@@ -391,6 +395,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   // Filter Woro-woro: Sembunyikan tugas yang sudah dikumpulkan/selesai oleh siswa ini atau jika tugas telah dihapus guru
   const filteredPengumumanList = React.useMemo(() => {
     return pengumumanList.filter((p) => {
+      // Isolasi 100% woro-woro antar sekolah
+      if (sekolahId && p.sekolahId && p.sekolahId !== sekolahId) {
+        return false;
+      }
       // Filter kelas jika ada (case-insensitive)
       if (
         p.kodeKelas &&
@@ -421,7 +429,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       }
       return true;
     });
-  }, [pengumumanList, dokumenList, kodeKelas, penugasanList]);
+  }, [pengumumanList, dokumenList, kodeKelas, penugasanList, sekolahId]);
 
   // Optimalisasi: Memoize daftar ID naskah mading agar tidak unsubscribe/resubscribe puluhan listener saat siswa mengetik draf
   const madingIdsKey = React.useMemo(() => madingList.map((d) => d.id).join(','), [madingList]);
@@ -1088,6 +1096,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
               role: 'siswa',
               kodeKelas,
               namaKelas,
+              sekolahId,
+              namaSekolah,
             }}
           />
         </div>
@@ -1217,6 +1227,11 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         {doc.namaKelas && (
                           <span className="ml-1.5 px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 text-[10px] font-medium">
                             {doc.namaKelas}
+                          </span>
+                        )}
+                        {doc.namaSekolah && (
+                          <span className="ml-1.5 px-2 py-0.5 rounded-md bg-[#FAF4EB] dark:bg-[#282015] text-[#8F6533] dark:text-[#E2C7A7] text-[10px] font-medium border border-[#ECDDC8]/80 dark:border-[#3E3121]/80">
+                            🏫 {doc.namaSekolah}
                           </span>
                         )}
                       </span>

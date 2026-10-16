@@ -8,12 +8,14 @@ interface ModalWoroWoroProps {
   isOpen: boolean;
   onClose: () => void;
   pengumumanList: Pengumuman[];
+  sekolahId?: string;
 }
 
 export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
   isOpen,
   onClose,
   pengumumanList,
+  sekolahId,
 }) => {
   const [inputWoro, setInputWoro] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -24,7 +26,7 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
     if (!inputWoro.trim()) return;
     setIsSending(true);
     try {
-      await DataService.tambahPengumuman(inputWoro.trim());
+      await DataService.tambahPengumuman(inputWoro.trim(), undefined, undefined, sekolahId);
       setInputWoro('');
     } catch (e) {
       console.error('Gagal mengirim woro-woro:', e);
@@ -92,17 +94,21 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
         <div className="border-t border-stone-100 dark:border-stone-800 pt-3 mb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
-              Riwayat Pengumuman Aktif ({pengumumanList.length})
+              Riwayat Pengumuman Aktif ({pengumumanList.filter(p => !sekolahId || !p.sekolahId || p.sekolahId === sekolahId).length})
             </span>
           </div>
 
           <div className="max-h-48 overflow-y-auto pr-1 flex flex-col gap-2">
-            {pengumumanList.length === 0 ? (
-              <p className="text-xs text-stone-400 dark:text-stone-500 text-center py-4 bg-stone-50 dark:bg-stone-900/40 rounded-lg border border-dashed border-stone-200 dark:border-stone-800">
-                Belum ada woro-woro yang sedang aktif.
-              </p>
-            ) : (
-              pengumumanList.map((p) => (
+            {(() => {
+              const scopedList = sekolahId ? pengumumanList.filter(p => !p.sekolahId || p.sekolahId === sekolahId) : pengumumanList;
+              if (scopedList.length === 0) {
+                return (
+                  <p className="text-xs text-stone-400 dark:text-stone-500 text-center py-4 bg-stone-50 dark:bg-stone-900/40 rounded-lg border border-dashed border-stone-200 dark:border-stone-800">
+                    Belum ada woro-woro yang sedang aktif.
+                  </p>
+                );
+              }
+              return scopedList.map((p) => (
                 <div
                   key={p.id}
                   className="p-3 bg-[#FAF9F5] dark:bg-[#18181A] rounded-xl border border-[#E8E4DA] dark:border-[#27262A] flex justify-between items-start gap-2.5 text-xs"
@@ -125,8 +131,8 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
                     <Trash2 size={13} />
                   </button>
                 </div>
-              ))
-            )}
+              ));
+            })()}
           </div>
         </div>
 

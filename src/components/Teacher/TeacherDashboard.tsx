@@ -621,6 +621,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
                     nama: user.nama,
                     role: 'guru',
                     kodeKelas: selectedFilterClass === 'semua' ? undefined : selectedFilterClass,
+                    sekolahId: user.sekolahId,
+                    namaSekolah: user.namaSekolah,
                   }}
                 />
               </div>
@@ -671,6 +673,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
         isOpen={isWoroModalOpen}
         onClose={() => setIsWoroModalOpen(false)}
         pengumumanList={pengumumanList}
+        sekolahId={user.sekolahId}
       />
 
       <ModalQuotes

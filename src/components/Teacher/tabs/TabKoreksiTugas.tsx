@@ -844,11 +844,11 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                                 onSelectStudentUsername(student.username);
                                 onSelectDocId(doc.id);
                               }}
-                              className={`p-2 rounded-lg text-left transition-all flex flex-col gap-0.5 cursor-pointer border ${
-                                isThisDocSelected
-                                  ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 border-stone-900 dark:border-amber-500/60 shadow-xs'
-                                  : 'bg-white dark:bg-stone-850 hover:bg-stone-100 dark:hover:bg-stone-800 border-stone-200/80 dark:border-stone-750 text-stone-800 dark:text-stone-200'
-                              }`}
+                                className={`p-2 rounded-lg text-left transition-all flex flex-col gap-0.5 cursor-pointer border ${
+                                  isThisDocSelected
+                                    ? 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100 border-stone-900 dark:border-amber-600/50 shadow-xs'
+                                    : 'bg-white dark:bg-[#18181B] hover:bg-stone-100 dark:hover:bg-[#202024] border-stone-200/70 dark:border-stone-800 text-stone-800 dark:text-stone-200'
+                                }`}
                             >
                               <div className="flex items-center justify-between gap-1 w-full">
                                 <span className={`text-[11px] font-serif-literary truncate italic flex-1 ${

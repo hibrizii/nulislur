@@ -11,6 +11,9 @@ const StudentPortal = lazy(() =>
 const TeacherDashboard = lazy(() =>
   import('./components/Teacher/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard }))
 );
+const AdminDashboard = lazy(() =>
+  import('./components/Admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+);
 
 const ViewLoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 text-stone-500 dark:text-stone-400">
@@ -67,6 +70,8 @@ export function App() {
       <Suspense fallback={<ViewLoadingFallback />}>
         {!currentUser ? (
           <UnifiedAuth onAuthSuccess={handleAuthSuccess} />
+        ) : currentUser.role === 'admin' ? (
+          <AdminDashboard user={currentUser} onLogout={handleLogout} />
         ) : currentUser.role === 'guru' ? (
           <TeacherDashboard user={currentUser} onLogout={handleLogout} />
         ) : (
