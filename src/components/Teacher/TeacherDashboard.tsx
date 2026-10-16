@@ -258,12 +258,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
     }
   }, [activeTab]);
 
-  // Daftar Kelas Guru ini (Dibuat Sendiri + Co-Teaching)
+  // Daftar Kelas Guru ini (Dibuat Sendiri + Co-Teaching, Dibatasi Ketat Sesuai Sekolah Guru)
   const myClasses = useMemo(() => {
-    return kelasList.filter(
-      (k) => k.guruUsername === user.username || joinedClassCodes.includes(k.kodeKelas)
-    );
-  }, [kelasList, user.username, joinedClassCodes]);
+    return kelasList.filter((k) => {
+      const isTeacherClass = k.guruUsername === user.username || joinedClassCodes.includes(k.kodeKelas);
+      if (!isTeacherClass) return false;
+      if (user.sekolahId && k.sekolahId && k.sekolahId !== user.sekolahId) {
+        return false;
+      }
+      return true;
+    });
+  }, [kelasList, user.username, user.sekolahId, joinedClassCodes]);
 
   // Daftar Siswa Terkait Kelas Guru ini
   const myStudents = useMemo(() => {
@@ -272,6 +277,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
       (u) => u.role === 'siswa' && u.kodeKelas && myClassCodes.has(u.kodeKelas)
     );
   }, [allUsersList, myClasses]);
+
+  // Penugasan Khusus Kelas Guru ini
+  const schoolPenugasanList = useMemo(() => {
+    const myClassCodes = new Set(myClasses.map((k) => k.kodeKelas));
+    return penugasanList.filter((p) => myClassCodes.has(p.kodeKelas));
+  }, [penugasanList, myClasses]);
+
+  // Woro-woro Khusus Sekolah Guru ini
+  const schoolPengumumanList = useMemo(() => {
+    if (!user.sekolahId) return pengumumanList;
+    return pengumumanList.filter((p) => !p.sekolahId || p.sekolahId === user.sekolahId);
+  }, [pengumumanList, user.sekolahId]);
 
   // Filter Siswa Berdasarkan Kelas Terpilih
   const filteredStudents = useMemo(() => {
@@ -339,15 +356,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
     });
   };
 
-  // Handler Buat Kelas Baru
+  // Handler Buat Kelas Baru (Menyertakan Sekolah Guru)
   const handleCreateNewClass = async (namaKelas: string, maxPeserta?: number) => {
-    const room = await DataService.buatKelasBaru(namaKelas, user.username, user.nama || user.username, maxPeserta);
+    const room = await DataService.buatKelasBaru(
+      namaKelas, 
+      user.username, 
+      user.nama || user.username, 
+      maxPeserta,
+      user.sekolahId,
+      user.namaSekolah
+    );
     setSelectedFilterClass(room.kodeKelas);
   };
 
-  // Handler Gabung Kelas Rekan
+  // Handler Gabung Kelas Rekan (Dengan Pengecekan Sekolah Guru)
   const handleJoinClass = async (kodeKelas: string) => {
-    const res = await DataService.gabungKelasRekan(kodeKelas, user.username);
+    const res = await DataService.gabungKelasRekan(kodeKelas, user.username, user.sekolahId);
     if (!res.success) {
       alert(res.message || `Kode kelas "${kodeKelas}" tidak ditemukan.`);
       return;
@@ -518,6 +542,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
       <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
         {/* Header Bar Atas (Stuck di atas) */}
         <TeacherHeader
+          user={user}
           myClasses={myClasses}
           selectedFilterClass={selectedFilterClass}
           onFilterClassChange={setSelectedFilterClass}
@@ -573,7 +598,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
               selectedDocId={selectedDocId}
               onSelectDocId={setSelectedDocId}
               onTandaiSelesai={handleTandaiSelesai}
-              penugasanList={penugasanList}
+              penugasanList={schoolPenugasanList}
               onOpenNewPenugasanModal={() => setIsPenugasanModalOpen(true)}
               onDokumenUpdated={() => {
                 DataService.getDokumen().then((docs) => setDokumenMap(docs));
@@ -586,7 +611,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
             <TabKelolaKelas
               myClasses={myClasses}
               user={user}
-              allUsersList={allUsersList}
+              allUsersList={myStudents}
               selectedFilterClass={selectedFilterClass}
               onFilterClassChange={setSelectedFilterClass}
               onOpenNewClassModal={() => setIsNewClassModalOpen(true)}
@@ -600,7 +625,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
                 setResetPassModal({ isOpen: true, username, nama });
               }}
               onDeleteStudent={handleDeleteStudent}
-              penugasanList={penugasanList}
+              penugasanList={schoolPenugasanList}
               onOpenNewPenugasanModal={() => {
                 setPenugasanToEdit(null);
                 setIsPenugasanModalOpen(true);
@@ -674,7 +699,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
       <ModalWoroWoro
         isOpen={isWoroModalOpen}
         onClose={() => setIsWoroModalOpen(false)}
-        pengumumanList={pengumumanList}
+        pengumumanList={schoolPengumumanList}
         sekolahId={user.sekolahId}
       />
 

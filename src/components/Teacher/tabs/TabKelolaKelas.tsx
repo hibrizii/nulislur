@@ -61,20 +61,26 @@ export const TabKelolaKelas: React.FC<TabKelolaKelasProps> = ({
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  // Hitung jumlah siswa per kelas secara efisien (O(N) lookup)
+  // Hitung jumlah siswa per kelas guru ini secara efisien (O(N) lookup)
   const classStudentCounts = React.useMemo(() => {
+    const myClassCodes = new Set(myClasses.map((k) => k.kodeKelas));
     const counts: Record<string, number> = {};
     for (const s of allUsersList) {
-      if (s.kodeKelas && s.role === 'siswa') {
+      if (s.kodeKelas && s.role === 'siswa' && myClassCodes.has(s.kodeKelas)) {
         counts[s.kodeKelas] = (counts[s.kodeKelas] || 0) + 1;
       }
     }
     return counts;
-  }, [allUsersList]);
+  }, [allUsersList, myClasses]);
 
-  // Filter Siswa Roster (Memoized)
+  // Filter Siswa Roster (Memoized & Terisolasi hanya ke kelas guru ini)
   const filteredStudents = React.useMemo(() => {
+    const myClassCodes = new Set(myClasses.map((k) => k.kodeKelas));
     return allUsersList.filter((s) => {
+      // Wajib terdaftar di kelas guru ini
+      if (!s.kodeKelas || !myClassCodes.has(s.kodeKelas)) {
+        return false;
+      }
       // 1. Filter Kelas
       if (selectedFilterClass !== 'semua' && s.kodeKelas !== selectedFilterClass) {
         return false;
@@ -88,7 +94,7 @@ export const TabKelolaKelas: React.FC<TabKelolaKelasProps> = ({
       }
       return true;
     });
-  }, [allUsersList, selectedFilterClass, searchRoster]);
+  }, [allUsersList, myClasses, selectedFilterClass, searchRoster]);
 
   // Ekspor Data Siswa ke CSV
   const handleExportCSV = () => {

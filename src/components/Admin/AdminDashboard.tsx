@@ -111,6 +111,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [newPassInput, setNewPassInput] = useState('');
   const [isResettingPass, setIsResettingPass] = useState(false);
 
+  // State Modal Ubah Sekolah Guru
+  const [editGuruSekolahTarget, setEditGuruSekolahTarget] = useState<UserAccount | null>(null);
+  const [newSekolahIdForGuru, setNewSekolahIdForGuru] = useState('');
+  const [isChangingGuruSekolah, setIsChangingGuruSekolah] = useState(false);
+
   // State Konfirmasi Hapus Sekolah
   const [deleteSekolahTarget, setDeleteSekolahTarget] = useState<Sekolah | null>(null);
 
@@ -298,6 +303,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       showToast('error', 'Gagal mereset kata sandi.');
     } finally {
       setIsResettingPass(false);
+    }
+  };
+
+  // Change Guru School
+  const handleChangeGuruSekolah = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editGuruSekolahTarget || !newSekolahIdForGuru) return;
+    const targetSekolah = sekolahList.find((s) => s.id === newSekolahIdForGuru);
+    if (!targetSekolah) return;
+
+    setIsChangingGuruSekolah(true);
+    try {
+      const res = await DataService.ubahSekolahGuru(
+        editGuruSekolahTarget.username,
+        targetSekolah.id,
+        targetSekolah.namaSekolah
+      );
+      if (res.success) {
+        showToast('success', res.message);
+        setEditGuruSekolahTarget(null);
+        fetchData();
+      } else {
+        showToast('error', res.message);
+      }
+    } catch (err: any) {
+      showToast('error', err?.message || 'Gagal mengubah sekolah guru.');
+    } finally {
+      setIsChangingGuruSekolah(false);
     }
   };
 
@@ -736,17 +769,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => {
-                                setResetPassTarget(guru);
-                                setNewPassInput('guru123');
-                              }}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-colors cursor-pointer inline-flex items-center gap-1"
-                              title="Reset Kata Sandi"
-                            >
-                              <KeyRound size={12} />
-                              <span>Reset Sandi</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setEditGuruSekolahTarget(guru);
+                                  setNewSekolahIdForGuru(guru.sekolahId || (sekolahList[0]?.id || 'sman1-gondanglegi'));
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-colors cursor-pointer inline-flex items-center gap-1"
+                                title="Pindahkan / Tetapkan Sekolah Guru"
+                              >
+                                <Building2 size={12} />
+                                <span>Ubah Sekolah</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setResetPassTarget(guru);
+                                  setNewPassInput('guru123');
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-colors cursor-pointer inline-flex items-center gap-1"
+                                title="Reset Kata Sandi"
+                              >
+                                <KeyRound size={12} />
+                                <span>Reset Sandi</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1290,6 +1336,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   className="px-4 py-1.5 rounded-lg bg-stone-900 text-white hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   <span>{isResettingPass ? 'Menyimpan...' : 'Reset Sandi'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL UBAH SEKOLAH GURU */}
+      {editGuruSekolahTarget && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="editorial-card w-full max-w-sm bg-white dark:bg-[#141416] p-5 rounded-2xl shadow-2xl border border-stone-200/80 dark:border-stone-800 flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+              <div className="flex items-center gap-2">
+                <Building2 size={16} className="text-amber-600 dark:text-amber-400" />
+                <h3 className="font-serif-literary font-bold text-sm text-stone-900 dark:text-stone-100">
+                  Pindahkan Sekolah Guru
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditGuruSekolahTarget(null)}
+                className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-600 dark:text-stone-400">
+              Pilih instansi sekolah untuk guru <strong>{editGuruSekolahTarget.nama}</strong> (@{editGuruSekolahTarget.username}):
+            </p>
+
+            <form onSubmit={handleChangeGuruSekolah} className="flex flex-col gap-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                  Instansi Sekolah:
+                </label>
+                <select
+                  value={newSekolahIdForGuru}
+                  onChange={(e) => setNewSekolahIdForGuru(e.target.value)}
+                  className="editorial-input w-full px-3 py-2 bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-750 rounded-xl"
+                >
+                  {sekolahList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.namaSekolah} ({s.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setEditGuruSekolahTarget(null)}
+                  className="px-3 py-1.5 rounded-lg text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingGuruSekolah}
+                  className="px-4 py-1.5 rounded-lg bg-stone-900 text-white hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Check size={13} />
+                  <span>{isChangingGuruSekolah ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
                 </button>
               </div>
             </form>

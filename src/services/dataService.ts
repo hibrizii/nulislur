@@ -807,14 +807,19 @@ export const DataService = {
           } catch {}
         }
 
+        const guruMap = await this.getGuruSekolahMap();
+        const mappedSekolah = guruMap[username];
+        const finalSekolahId = mappedSekolah?.sekolahId || data.sekolah_id || 'sman1-gondanglegi';
+        const finalNamaSekolah = mappedSekolah?.namaSekolah || data.nama_sekolah || 'SMA Negeri 1 Gondanglegi';
+
         const user: UserAccount = {
           username: data.username,
           nama: data.nama,
           role,
           kodeKelas: data.kode_kelas,
           namaKelas: data.nama_kelas,
-          sekolahId: data.sekolah_id || 'sman1-gondanglegi',
-          namaSekolah: data.nama_sekolah || 'SMA Negeri 1 Gondanglegi',
+          sekolahId: finalSekolahId,
+          namaSekolah: finalNamaSekolah,
           waktuDaftar: data.created_at
         };
 
@@ -838,6 +843,17 @@ export const DataService = {
     } else if (username === 'hibri') {
       user.role = 'guru';
     }
+
+    const guruMap = await this.getGuruSekolahMap();
+    const mapped = guruMap[username];
+    if (mapped) {
+      user.sekolahId = mapped.sekolahId;
+      user.namaSekolah = mapped.namaSekolah;
+    } else if (!user.sekolahId) {
+      user.sekolahId = 'sman1-gondanglegi';
+      user.namaSekolah = 'SMA Negeri 1 Gondanglegi';
+    }
+
     return { success: true, user };
   },
 
@@ -909,6 +925,11 @@ export const DataService = {
           return { success: false, message: `Username "${username}" sudah digunakan. Silakan pilih username lain.` };
         }
 
+        const kelasMap = await this.getKelasSekolahMap();
+        const mappedSekolah = kelasMap[kelasData.kode_kelas];
+        const targetSekolahId = mappedSekolah?.sekolahId || (kelasData as any).sekolah_id;
+        const targetNamaSekolah = mappedSekolah?.namaSekolah || (kelasData as any).nama_sekolah;
+
         // Simpan user baru
         const newUser: UserAccount = {
           username,
@@ -917,20 +938,42 @@ export const DataService = {
           password: cleanPass,
           kodeKelas: kelasData.kode_kelas,
           namaKelas: kelasData.nama_kelas,
+          sekolahId: targetSekolahId || undefined,
+          namaSekolah: targetNamaSekolah || undefined,
           waktuDaftar: getWaktuSekarang()
         };
 
-        const { error: insertErr } = await supabase.from('users').insert({
-          username,
-          nama: cleanNama,
-          role: 'siswa',
-          password: cleanPass,
-          kode_kelas: kelasData.kode_kelas,
-          nama_kelas: kelasData.nama_kelas
-        });
+        try {
+          const { error: insertErr } = await supabase.from('users').insert({
+            username,
+            nama: cleanNama,
+            role: 'siswa',
+            password: cleanPass,
+            kode_kelas: kelasData.kode_kelas,
+            nama_kelas: kelasData.nama_kelas,
+            sekolah_id: targetSekolahId || null,
+            nama_sekolah: targetNamaSekolah || null
+          });
 
-        if (insertErr) {
-          return { success: false, message: `Gagal mendaftarkan akun: ${insertErr.message}` };
+          if (insertErr) {
+            await supabase.from('users').insert({
+              username,
+              nama: cleanNama,
+              role: 'siswa',
+              password: cleanPass,
+              kode_kelas: kelasData.kode_kelas,
+              nama_kelas: kelasData.nama_kelas
+            });
+          }
+        } catch {
+          await supabase.from('users').insert({
+            username,
+            nama: cleanNama,
+            role: 'siswa',
+            password: cleanPass,
+            kode_kelas: kelasData.kode_kelas,
+            nama_kelas: kelasData.nama_kelas
+          });
         }
 
         // Inisialisasi kehadiran live
@@ -969,6 +1012,11 @@ export const DataService = {
       return { success: false, message: `Username "${username}" sudah digunakan. Pilih username lain.` };
     }
 
+    const kelasMap = await this.getKelasSekolahMap();
+    const mappedSekolah = kelasMap[kodeKelas];
+    const targetSekolahId = mappedSekolah?.sekolahId || kelasData.sekolahId;
+    const targetNamaSekolah = mappedSekolah?.namaSekolah || kelasData.namaSekolah;
+
     const newUser: UserAccount = {
       username,
       nama: cleanNama,
@@ -976,6 +1024,8 @@ export const DataService = {
       password: cleanPass,
       kodeKelas,
       namaKelas: kelasData.namaKelas,
+      sekolahId: targetSekolahId || undefined,
+      namaSekolah: targetNamaSekolah || undefined,
       waktuDaftar: getWaktuSekarang()
     };
 
@@ -989,7 +1039,9 @@ export const DataService = {
     namaKelas: string, 
     guruUsername: string, 
     namaGuru: string, 
-    maxPeserta?: number
+    maxPeserta?: number,
+    sekolahId?: string,
+    namaSekolah?: string
   ): Promise<KelasRoom> {
     const cleanNamaKelas = namaKelas.trim();
     const kode = generateKodeKelas();
@@ -1001,9 +1053,15 @@ export const DataService = {
       namaKelas: cleanNamaKelas,
       guruUsername,
       namaGuru,
+      sekolahId: sekolahId || undefined,
+      namaSekolah: namaSekolah || undefined,
       waktuDibuat: getWaktuSekarang(),
       maxPeserta: validMaxPeserta
     };
+
+    if (sekolahId && namaSekolah) {
+      await this.setKelasSekolah(kode, sekolahId, namaSekolah);
+    }
 
     if (isSupabaseConfigured) {
       try {
@@ -1013,16 +1071,29 @@ export const DataService = {
           nama_kelas: cleanNamaKelas,
           guru_username: guruUsername,
           nama_guru: namaGuru,
+          sekolah_id: sekolahId || null,
+          nama_sekolah: namaSekolah || null,
           max_peserta: validMaxPeserta ?? null
         });
       } catch {
-        await supabase.from('kelas').insert({
-          id: kode,
-          kode_kelas: kode,
-          nama_kelas: cleanNamaKelas,
-          guru_username: guruUsername,
-          nama_guru: namaGuru
-        });
+        try {
+          await supabase.from('kelas').insert({
+            id: kode,
+            kode_kelas: kode,
+            nama_kelas: cleanNamaKelas,
+            guru_username: guruUsername,
+            nama_guru: namaGuru,
+            max_peserta: validMaxPeserta ?? null
+          });
+        } catch {
+          await supabase.from('kelas').insert({
+            id: kode,
+            kode_kelas: kode,
+            nama_kelas: cleanNamaKelas,
+            guru_username: guruUsername,
+            nama_guru: namaGuru
+          });
+        }
       }
       return newRoom;
     }
@@ -1033,10 +1104,17 @@ export const DataService = {
     return newRoom;
   },
 
-  // 3b. Gabung Kelas Rekan (Co-Teaching Access)
-  async gabungKelasRekan(kodeKelasInput: string, guruUsername: string): Promise<{ success: boolean; message: string; kelas?: KelasRoom }> {
+  // 3b. Gabung Kelas Rekan (Co-Teaching Access - Terisolasi per Sekolah)
+  async gabungKelasRekan(
+    kodeKelasInput: string, 
+    guruUsername: string, 
+    guruSekolahId?: string
+  ): Promise<{ success: boolean; message: string; kelas?: KelasRoom }> {
     const kodeKelas = kodeKelasInput.trim().toUpperCase();
     if (!kodeKelas) return { success: false, message: 'Kode kelas tidak boleh kosong.' };
+
+    const kelasMap = await this.getKelasSekolahMap();
+    const mapped = kelasMap[kodeKelas];
 
     if (isSupabaseConfigured) {
       try {
@@ -1048,6 +1126,16 @@ export const DataService = {
 
         if (error || !kelasData) {
           return { success: false, message: `Kelas dengan kode "${kodeKelas}" tidak ditemukan.` };
+        }
+
+        const classSekolahId = mapped?.sekolahId || (kelasData as any).sekolah_id;
+        const classNamaSekolah = mapped?.namaSekolah || (kelasData as any).nama_sekolah;
+
+        if (guruSekolahId && classSekolahId && classSekolahId !== guruSekolahId) {
+          return {
+            success: false,
+            message: `Akses ditolak: Kelas "${kelasData.nama_kelas}" terdaftar di bawah naungan ${classNamaSekolah || classSekolahId}. Anda hanya dapat bergabung dengan kelas di sekolah Anda.`
+          };
         }
 
         // Simpan daftar kelas yang diakses guru di tabel pengaturan
@@ -1081,6 +1169,8 @@ export const DataService = {
           namaKelas: kelasData.nama_kelas,
           guruUsername: kelasData.guru_username,
           namaGuru: kelasData.nama_guru,
+          sekolahId: classSekolahId || undefined,
+          namaSekolah: classNamaSekolah || undefined,
           waktuDibuat: kelasData.created_at
         };
 
@@ -1095,6 +1185,17 @@ export const DataService = {
     if (!kelasData) {
       return { success: false, message: `Kelas dengan kode "${kodeKelas}" tidak ditemukan.` };
     }
+
+    const classSekolahId = mapped?.sekolahId || kelasData.sekolahId;
+    const classNamaSekolah = mapped?.namaSekolah || kelasData.namaSekolah;
+
+    if (guruSekolahId && classSekolahId && classSekolahId !== guruSekolahId) {
+      return {
+        success: false,
+        message: `Akses ditolak: Kelas "${kelasData.namaKelas}" terdaftar di bawah naungan ${classNamaSekolah || classSekolahId}. Anda hanya dapat bergabung dengan kelas di sekolah Anda.`
+      };
+    }
+
     return { success: true, message: `Berhasil bergabung dengan kelas "${kelasData.namaKelas}"!`, kelas: kelasData };
   },
 
@@ -3552,15 +3653,21 @@ export const DataService = {
       const fetchAll = async () => {
         const { data } = await supabase.from('kelas').select('*');
         if (data) {
-          const rooms: KelasRoom[] = data.map((r) => ({
-            id: r.id,
-            kodeKelas: r.kode_kelas,
-            namaKelas: r.nama_kelas,
-            guruUsername: r.guru_username,
-            namaGuru: r.nama_guru,
-            waktuDibuat: r.created_at,
-            maxPeserta: r.max_peserta ? Number(r.max_peserta) : undefined
-          }));
+          const kelasMap = await this.getKelasSekolahMap();
+          const rooms: KelasRoom[] = data.map((r) => {
+            const mapped = kelasMap[r.kode_kelas];
+            return {
+              id: r.id,
+              kodeKelas: r.kode_kelas,
+              namaKelas: r.nama_kelas,
+              guruUsername: r.guru_username,
+              namaGuru: r.nama_guru,
+              sekolahId: mapped?.sekolahId || (r as any).sekolah_id || undefined,
+              namaSekolah: mapped?.namaSekolah || (r as any).nama_sekolah || undefined,
+              waktuDibuat: r.created_at,
+              maxPeserta: r.max_peserta ? Number(r.max_peserta) : undefined
+            };
+          });
           callback(rooms);
         }
       };
@@ -3579,8 +3686,17 @@ export const DataService = {
       };
     }
 
-    const update = () => {
-      callback(Object.values(getLocalDB().kelas));
+    const update = async () => {
+      const kelasMap = await this.getKelasSekolahMap();
+      const all = Object.values(getLocalDB().kelas).map((k) => {
+        const mapped = kelasMap[k.kodeKelas];
+        return {
+          ...k,
+          sekolahId: mapped?.sekolahId || k.sekolahId || undefined,
+          namaSekolah: mapped?.namaSekolah || k.namaSekolah || undefined,
+        };
+      });
+      callback(all);
     };
     update();
     window.addEventListener('nulislur_db_change', update);
@@ -3592,14 +3708,20 @@ export const DataService = {
       const fetchAll = async () => {
         const { data } = await supabase.from('users').select('*').eq('role', 'siswa');
         if (data) {
-          const list: UserAccount[] = data.map((u) => ({
-            username: u.username,
-            nama: u.nama,
-            role: u.role,
-            kodeKelas: u.kode_kelas,
-            namaKelas: u.nama_kelas,
-            waktuDaftar: u.created_at
-          }));
+          const kelasMap = await this.getKelasSekolahMap();
+          const list: UserAccount[] = data.map((u) => {
+            const mappedSekolah = u.kode_kelas ? kelasMap[u.kode_kelas] : undefined;
+            return {
+              username: u.username,
+              nama: u.nama,
+              role: u.role,
+              kodeKelas: u.kode_kelas,
+              namaKelas: u.nama_kelas,
+              sekolahId: (u as any).sekolah_id || mappedSekolah?.sekolahId || undefined,
+              namaSekolah: (u as any).nama_sekolah || mappedSekolah?.namaSekolah || undefined,
+              waktuDaftar: u.created_at
+            };
+          });
           callback(list);
         }
       };
@@ -3618,8 +3740,18 @@ export const DataService = {
       };
     }
 
-    const update = () => {
-      const all = Object.values(getLocalDB().users).filter((u) => u.role === 'siswa');
+    const update = async () => {
+      const kelasMap = await this.getKelasSekolahMap();
+      const all = Object.values(getLocalDB().users)
+        .filter((u) => u.role === 'siswa')
+        .map((u) => {
+          const mappedSekolah = u.kodeKelas ? kelasMap[u.kodeKelas] : undefined;
+          return {
+            ...u,
+            sekolahId: u.sekolahId || mappedSekolah?.sekolahId || undefined,
+            namaSekolah: u.namaSekolah || mappedSekolah?.namaSekolah || undefined,
+          };
+        });
       callback(all);
     };
     update();
@@ -5217,28 +5349,154 @@ export const DataService = {
     };
   },
 
+  async getGuruSekolahMap(): Promise<Record<string, { sekolahId: string; namaSekolah: string }>> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('pengaturan').select('val').eq('key', 'guru_sekolah_map').maybeSingle();
+        if (data?.val) {
+          return JSON.parse(data.val);
+        }
+      } catch {}
+    }
+    const local = getLocalDB();
+    const map: Record<string, { sekolahId: string; namaSekolah: string }> = {};
+    Object.values(local.users).forEach((u) => {
+      if ((u.role === 'guru' || u.role === 'admin') && u.sekolahId) {
+        map[u.username] = { sekolahId: u.sekolahId, namaSekolah: u.namaSekolah || '' };
+      }
+    });
+    return map;
+  },
+
+  async setGuruSekolah(username: string, sekolahId: string, namaSekolah: string): Promise<void> {
+    const cleanUser = username.trim().toLowerCase();
+    const curMap = await this.getGuruSekolahMap();
+    curMap[cleanUser] = { sekolahId, namaSekolah };
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('pengaturan').upsert({
+          key: 'guru_sekolah_map',
+          val: JSON.stringify(curMap)
+        });
+        await supabase.from('users').update({
+          sekolah_id: sekolahId,
+          nama_sekolah: namaSekolah
+        }).eq('username', cleanUser);
+      } catch {}
+    }
+
+    const local = getLocalDB();
+    if (local.users[cleanUser]) {
+      local.users[cleanUser].sekolahId = sekolahId;
+      local.users[cleanUser].namaSekolah = namaSekolah;
+      saveLocalDB(local);
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const sessionStr = localStorage.getItem('nulislur_session');
+        if (sessionStr) {
+          const sess = JSON.parse(sessionStr);
+          if (sess.username === cleanUser) {
+            sess.sekolahId = sekolahId;
+            sess.namaSekolah = namaSekolah;
+            localStorage.setItem('nulislur_session', JSON.stringify(sess));
+            sessionStorage.setItem('nulislur_session', JSON.stringify(sess));
+          }
+        }
+      } catch {}
+      window.dispatchEvent(new Event('nulislur_db_change'));
+    }
+  },
+
+  async ubahSekolahGuru(username: string, sekolahId: string, namaSekolah: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await this.setGuruSekolah(username, sekolahId, namaSekolah);
+      return { success: true, message: `Guru @${username} berhasil dipindahkan ke ${namaSekolah}.` };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Gagal mengubah sekolah guru.' };
+    }
+  },
+
+  async getKelasSekolahMap(): Promise<Record<string, { sekolahId: string; namaSekolah: string }>> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from('pengaturan').select('val').eq('key', 'kelas_sekolah_map').maybeSingle();
+        if (data?.val) {
+          return JSON.parse(data.val);
+        }
+      } catch {}
+    }
+    const local = getLocalDB();
+    const map: Record<string, { sekolahId: string; namaSekolah: string }> = {};
+    Object.values(local.kelas).forEach((k) => {
+      if (k.sekolahId) {
+        map[k.kodeKelas] = { sekolahId: k.sekolahId, namaSekolah: k.namaSekolah || '' };
+      }
+    });
+    return map;
+  },
+
+  async setKelasSekolah(kodeKelas: string, sekolahId: string, namaSekolah: string): Promise<void> {
+    const cleanKode = kodeKelas.trim().toUpperCase();
+    const curMap = await this.getKelasSekolahMap();
+    curMap[cleanKode] = { sekolahId, namaSekolah };
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('pengaturan').upsert({
+          key: 'kelas_sekolah_map',
+          val: JSON.stringify(curMap)
+        });
+        await supabase.from('kelas').update({
+          sekolah_id: sekolahId,
+          nama_sekolah: namaSekolah
+        }).eq('kode_kelas', cleanKode);
+      } catch {}
+    }
+
+    const local = getLocalDB();
+    if (local.kelas[cleanKode]) {
+      local.kelas[cleanKode].sekolahId = sekolahId;
+      local.kelas[cleanKode].namaSekolah = namaSekolah;
+      saveLocalDB(local);
+    }
+  },
+
   async getSemuaGuru(): Promise<UserAccount[]> {
+    const guruMap = await this.getGuruSekolahMap();
     if (isSupabaseConfigured) {
       try {
         const { data } = await supabase.from('users').select('*').in('role', ['guru', 'admin']);
         if (data) {
-          return data.map(u => ({
-            username: u.username,
-            nama: u.nama,
-            role: (u.username === 'admin' ? 'admin' : (u.role || 'guru')) as UserRole,
-            kodeKelas: u.kode_kelas,
-            namaKelas: u.nama_kelas,
-            sekolahId: u.sekolah_id || 'sman1-gondanglegi',
-            namaSekolah: u.nama_sekolah || 'SMA Negeri 1 Gondanglegi',
-            waktuDaftar: u.created_at
-          }));
+          return data.map(u => {
+            const mapped = guruMap[u.username];
+            return {
+              username: u.username,
+              nama: u.nama,
+              role: (u.username === 'admin' ? 'admin' : (u.role || 'guru')) as UserRole,
+              kodeKelas: u.kode_kelas,
+              namaKelas: u.nama_kelas,
+              sekolahId: mapped?.sekolahId || u.sekolah_id || 'sman1-gondanglegi',
+              namaSekolah: mapped?.namaSekolah || u.nama_sekolah || 'SMA Negeri 1 Gondanglegi',
+              waktuDaftar: u.created_at
+            };
+          });
         }
       } catch (e) {
         console.warn('Gagal memuat daftar guru:', e);
       }
     }
     const local = getLocalDB();
-    return Object.values(local.users).filter(u => u.role === 'guru' || u.role === 'admin');
+    return Object.values(local.users).filter(u => u.role === 'guru' || u.role === 'admin').map(u => {
+      const mapped = guruMap[u.username];
+      return {
+        ...u,
+        sekolahId: mapped?.sekolahId || u.sekolahId || 'sman1-gondanglegi',
+        namaSekolah: mapped?.namaSekolah || u.namaSekolah || 'SMA Negeri 1 Gondanglegi',
+      };
+    });
   },
 
   async tambahAkunGuru(nama: string, username: string, password: string, sekolahId: string, namaSekolah: string): Promise<{ success: boolean; message: string }> {
@@ -5269,6 +5527,7 @@ export const DataService = {
             role: 'guru'
           });
         }
+        await this.setGuruSekolah(cleanUser, sekolahId, namaSekolah);
         return { success: true, message: `Akun Guru "${cleanNama}" (@${cleanUser}) berhasil dibuat!` };
       } catch (e: any) {
         return { success: false, message: e?.message || 'Gagal menambahkan akun guru.' };
@@ -5287,6 +5546,7 @@ export const DataService = {
       namaSekolah
     };
     saveLocalDB(local);
+    await this.setGuruSekolah(cleanUser, sekolahId, namaSekolah);
     return { success: true, message: `Akun Guru "${cleanNama}" berhasil dibuat!` };
   },
 

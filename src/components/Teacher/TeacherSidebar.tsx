@@ -16,7 +16,8 @@ import {
   LogOut,
   X,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  School
 } from 'lucide-react';
 import { ThemeToggle } from '../Common/ThemeToggle';
 import type { UserAccount } from '../../types';
@@ -133,7 +134,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
           {isCollapsed ? (
             <div 
               className="hidden lg:flex w-9 h-9 mx-auto mb-3 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold text-xs items-center justify-center font-serif-literary shrink-0 border border-stone-200 dark:border-stone-700 cursor-default"
-              title={`${user.nama || user.username} (@${user.username})`}
+              title={`${user.nama || user.username} (@${user.username}) - ${user.namaSekolah || 'Sekolah'}`}
             >
               {(user.nama || user.username || 'G')[0].toUpperCase()}
             </div>
@@ -149,6 +150,12 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 <div className="text-[10px] text-stone-400 dark:text-stone-500 font-mono truncate">
                   @{user.username}
                 </div>
+                {user.namaSekolah && (
+                  <div className="text-[10px] font-medium text-amber-700 dark:text-amber-400 truncate mt-0.5 flex items-center gap-1" title={user.namaSekolah}>
+                    <School size={10} className="shrink-0" />
+                    <span className="truncate">{user.namaSekolah}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

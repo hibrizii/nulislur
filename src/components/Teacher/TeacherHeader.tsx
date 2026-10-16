@@ -8,10 +8,12 @@ import {
   FileEdit, 
   Megaphone,
   Sparkles,
+  School,
 } from 'lucide-react';
-import type { KelasRoom } from '../../types';
+import type { KelasRoom, UserAccount } from '../../types';
 
 interface TeacherHeaderProps {
+  user?: UserAccount;
   myClasses: KelasRoom[];
   selectedFilterClass: string;
   onFilterClassChange: (code: string) => void;
@@ -28,6 +30,7 @@ interface TeacherHeaderProps {
 }
 
 export const TeacherHeader: React.FC<TeacherHeaderProps> = ({
+  user,
   myClasses,
   selectedFilterClass,
   onFilterClassChange,
@@ -55,8 +58,15 @@ export const TeacherHeader: React.FC<TeacherHeaderProps> = ({
             <Menu size={20} />
           </button>
 
-          {/* Kelas Selector */}
+          {/* Badge Sekolah Guru */}
+          {user?.namaSekolah && (
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-850 border border-stone-200/60 dark:border-stone-800 text-[11px] text-stone-700 dark:text-stone-300 font-semibold shadow-2xs max-w-[200px] truncate" title={user.namaSekolah}>
+              <School size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="truncate">{user.namaSekolah}</span>
+            </div>
+          )}
 
+          {/* Kelas Selector */}
           <div className="flex items-center gap-2">
             <span className="hidden sm:flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               <Filter size={13} /> Kelas Aktif:
