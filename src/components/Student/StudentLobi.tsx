@@ -34,6 +34,7 @@ import { cleanSnippet } from '../../utils/exportDocument';
 import { StudentGrowthReport } from './StudentGrowthReport';
 import { LinimasaCuitan } from '../Cuitan/LinimasaCuitan';
 import { KelolaKolaboratorModal } from './KelolaKolaboratorModal';
+import { FormattedWoroText } from '../Common/FormattedWoroText';
 
 interface StudentLobiProps {
   nama: string;
@@ -146,7 +147,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'publish' as const,
         label: 'Terpublikasi',
-        badgeClass: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        badgeClass: 'bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] border-[#D4E2EE] dark:border-[#283C4E]',
         icon: Globe,
         needsRevision: false,
         totalNotes: 0,
@@ -156,7 +157,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'selesai' as const,
         label: 'Selesai',
-        badgeClass: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        badgeClass: 'bg-[#EAF3EC] dark:bg-[#1E2B22] text-[#2D5A37] dark:text-[#A7D1AF] border-[#D1E6D5] dark:border-[#2C4032]',
         icon: CheckCircle,
         needsRevision: false,
         totalNotes: 0,
@@ -168,7 +169,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'revisi' as const,
         label: uncheckedCount > 0 ? `Perlu Revisi (${uncheckedCount})` : 'Perlu Revisi',
-        badgeClass: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-800 font-bold',
+        badgeClass: 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] border-[#F2D7D0] dark:border-[#422924] font-medium',
         icon: AlertCircle,
         needsRevision: true,
         totalNotes: uncheckedCount,
@@ -179,7 +180,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'terkumpul' as const,
         label: 'Menunggu Koreksi',
-        badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        badgeClass: 'bg-[#FAF4EB] dark:bg-[#282117] text-[#785429] dark:text-[#E2C7A7] border-[#EEDFCD] dark:border-[#3D3224]',
         icon: Clock,
         needsRevision: false,
         totalNotes: 0,
@@ -189,7 +190,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     return {
       type: 'draf' as const,
       label: 'Draf Saya',
-      badgeClass: 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700',
+      badgeClass: 'bg-[#F4F3EF] dark:bg-[#222126] text-[#5C5751] dark:text-[#B5B0A8] border-[#E5E2DA] dark:border-[#33313B]',
       icon: FileText,
       needsRevision: false,
       totalNotes: 0,
@@ -616,10 +617,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   naskahList: (claimedRedeemInfo.naskahList as any) || [],
                 });
               }}
-              className="editorial-btn bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800/80 px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              className="editorial-btn bg-[#EAF3EC] hover:bg-[#DDECE0] text-[#2D5A37] border border-[#D1E6D5] dark:bg-[#1E2B22] dark:text-[#A7D1AF] dark:border-[#2C4032] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
               title={`Karya arsip sudah diklaim (${claimedRedeemInfo.kodeRedeem}). Klik untuk melihat arsip.`}
             >
-              <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2 size={14} className="text-[#2D5A37] dark:text-[#A7D1AF]" />
               <span className="hidden sm:inline">Karya Terklaim</span>
               <span className="sm:hidden">Terklaim</span>
             </button>
@@ -629,10 +630,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 setIsRedeemModalOpen(true);
                 setRedeemFeedback(null);
               }}
-              className="editorial-btn bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800/80 dark:hover:bg-amber-950/70 px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              className="editorial-btn bg-[#FAF4EB] hover:bg-[#F2E8D8] text-[#785429] border border-[#EEDFCD] dark:bg-[#282117] dark:text-[#E2C7A7] dark:border-[#3D3224] dark:hover:bg-[#322A1E] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
               title="Klaim naskah tulisan dari semester/aplikasi sebelumnya"
             >
-              <KeyRound size={14} className="text-amber-600 dark:text-amber-400" />
+              <KeyRound size={14} className="text-[#785429] dark:text-[#E2C7A7]" />
               <span className="hidden sm:inline">Klaim Karya Lama</span>
               <span className="sm:hidden">Klaim</span>
             </button>
@@ -640,7 +641,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
           <button
             onClick={() => setIsNewDocOpen(true)}
-            className="editorial-btn bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100 dark:border dark:border-stone-700 px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-all"
+            className="editorial-btn bg-[#2D2926] hover:bg-[#1C1917] text-white dark:bg-[#EAE6E1] dark:hover:bg-white dark:text-[#1C1917] dark:border dark:border-[#D6D0C7] px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-all"
             title="Buat Naskah Tulisan Baru"
           >
             <Plus size={15} />
@@ -764,10 +765,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                     className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                       taskFilterStatus === tab.id
                         ? tab.alert
-                          ? 'bg-orange-600 text-white border-orange-600 shadow-2xs'
+                          ? 'bg-[#874538] text-white border-[#874538] dark:bg-[#A35647] dark:border-[#A35647] shadow-2xs'
                           : 'bg-stone-900 text-white border-stone-900 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700 shadow-2xs'
                         : tab.alert
-                        ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800/80 hover:bg-orange-100'
+                        ? 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] border-[#F2D6CF] dark:border-[#4A2E28] hover:bg-[#F5E6E1]'
                         : 'bg-white dark:bg-[#141416] text-stone-600 dark:text-stone-400 border-stone-200/80 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800/80'
                     }`}
                   >
@@ -848,7 +849,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                       onClick={() => onOpenEditor(doc.id)}
                       className={`editorial-card p-5 bg-white dark:bg-[#141416] cursor-pointer flex flex-col justify-between transition-all hover:shadow-sm ${
                         info.needsRevision
-                          ? 'border-orange-300 dark:border-orange-800/80 ring-1 ring-orange-400/20'
+                          ? 'border-[#E5B5AA] dark:border-[#5C2B22] ring-1 ring-[#E5B5AA]/30'
                           : 'border-stone-200/80 dark:border-stone-800'
                       }`}
                     >
@@ -861,25 +862,25 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                               <StatusIcon size={11} /> {info.label}
                             </span>
                             {doc.judulTugas && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40 flex items-center gap-1">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] border border-[#D4E2EE] dark:border-[#283C4E] flex items-center gap-1">
                                 <BookOpen size={10} /> {doc.judulTugas}
                               </span>
                             )}
                             {isCollabDoc && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-900/40 flex items-center gap-1">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F3EFF8] dark:bg-[#251E2E] text-[#594673] dark:text-[#CBBDE2] border border-[#DFD3ED] dark:border-[#3E2E4E] flex items-center gap-1">
                                 <Users size={10} /> Kolaborasi ({(doc.kolaborator?.length || 0) + 1})
                               </span>
                             )}
                           </div>
 
                           {doc.pelanggaran > 0 && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 flex items-center gap-1">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FDF1F1] dark:bg-[#2A1818] text-[#8C3E3E] dark:text-[#E49D9D] border border-[#F5D5D5] dark:border-[#4B2525] flex items-center gap-1">
                               <AlertCircle size={11} /> {doc.pelanggaran}x
                             </span>
                           )}
                         </div>
 
-                        <h4 className="font-serif-literary font-bold text-base text-stone-900 dark:text-stone-100 line-clamp-2 mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        <h4 className="font-serif-literary font-bold text-base text-stone-900 dark:text-stone-100 line-clamp-2 mb-1 group-hover:text-[#365778] dark:group-hover:text-[#A4C2E0] transition-colors">
                           {doc.judul || 'Tanpa Judul'}
                         </h4>
 
@@ -896,7 +897,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                               </span>
                             )}
                             {!isPembuat && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-semibold ml-1">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#E9E1F2] dark:bg-[#32233F] text-[#594673] dark:text-[#CBBDE2] font-semibold ml-1">
                                 Kolaborator
                               </span>
                             )}
@@ -904,8 +905,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         )}
 
                         {info.needsRevision && (
-                          <div className="mt-1 mb-2.5 px-2.5 py-1.5 rounded-lg bg-orange-50 dark:bg-orange-950/40 border border-orange-200/90 dark:border-orange-800 text-[11px] text-orange-900 dark:text-orange-200 flex items-center gap-1.5">
-                            <Sparkles size={12} className="text-orange-600 dark:text-orange-400 shrink-0" />
+                          <div className="mt-1 mb-2.5 px-2.5 py-1.5 rounded-lg bg-[#FAF0ED] dark:bg-[#2B1B18] border border-[#F2D6CF] dark:border-[#4A2E28] text-[11px] text-[#874538] dark:text-[#E4A599] flex items-center gap-1.5">
+                            <Sparkles size={12} className="text-[#A35647] dark:text-[#E4A599] shrink-0" />
                             <span className="truncate">Ada catatan koreksi dari guru ({info.totalNotes})</span>
                           </div>
                         )}
@@ -927,7 +928,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             <button
                               type="button"
                               onClick={() => setManagingCollabDoc(doc)}
-                              className="editorial-btn bg-stone-100 hover:bg-purple-50 text-stone-600 hover:text-purple-700 dark:bg-stone-800 dark:hover:bg-purple-950/50 dark:text-stone-300 dark:hover:text-purple-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                              className="editorial-btn bg-stone-100 hover:bg-[#F3EFF8] text-stone-600 hover:text-[#594673] dark:bg-stone-800 dark:hover:bg-[#251E2E] dark:text-stone-300 dark:hover:text-[#CBBDE2] text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                               title="Kelola Kolaborator"
                             >
                               <Users size={12} /> Kolaborator ({(doc.kolaborator?.length || 0) + 1})
@@ -937,7 +938,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                           {isApproved && !doc.isPublic && (
                             <button
                               onClick={() => setPublishDocId(doc.id)}
-                              className="editorial-btn bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 cursor-pointer"
+                              className="editorial-btn bg-[#365778] hover:bg-[#29435C] text-white dark:bg-[#436A92] dark:hover:bg-[#527EAE] text-xs px-2.5 py-1 cursor-pointer"
                               title="Publikasikan ke Ruang Publik"
                             >
                               <Share2 size={12} /> Publikasi
@@ -947,7 +948,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                           {doc.status === 'Draf' && isPembuat && (
                             <button
                               onClick={() => setDeleteDocId(doc.id)}
-                              className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-[#8C3E3E] hover:bg-[#FDF1F1] dark:hover:bg-[#2A1818] transition-colors cursor-pointer"
                               title="Hapus Draf"
                             >
                               <Trash2 size={14} />
@@ -962,31 +963,38 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
             )}
           </div>
 
-          {/* Kolom Kanan: Woro-woro */}
-          <div className="flex flex-col gap-6">
+          {/* Kolom Kanan: Woro-woro & Kutipan Sastra */}
+          <div className="flex flex-col gap-5">
             <div className="editorial-card p-5 bg-white dark:bg-[#141416]">
-              <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 border-b border-stone-100 dark:border-stone-800 pb-2.5 mb-3 flex items-center gap-2">
-                <Megaphone size={16} className="text-amber-600 dark:text-amber-400" /> Woro-woro
-              </h3>
-              <div className="max-h-60 overflow-y-auto pr-1 flex flex-col gap-2.5 custom-scrollbar">
+              <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-stone-100 dark:border-stone-800">
+                <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                  <Megaphone size={16} className="text-[#8F6533] dark:text-[#D9B27F]" /> 
+                  <span>Woro-woro</span>
+                </h3>
+                <span className="text-[10px] font-medium text-stone-400 dark:text-stone-500 font-mono">
+                  Siaran Kelas
+                </span>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto pr-1 flex flex-col gap-3 custom-scrollbar">
                 {filteredPengumumanList.length === 0 ? (
-                  <p className="text-xs text-stone-400 dark:text-stone-500">
+                  <div className="py-8 text-center text-xs text-stone-400 dark:text-stone-500 font-serif-literary italic">
                     Belum ada woro-woro baru untuk kelasmu.
-                  </p>
+                  </div>
                 ) : (
                   filteredPengumumanList.map((p) => (
                     <div
                       key={p.id}
-                      className={`p-3 rounded-xl text-xs font-medium border ${
+                      className={`p-3.5 rounded-xl text-xs font-medium border transition-all duration-200 ${
                         p.tugasId
-                          ? 'bg-amber-100/70 dark:bg-amber-950/60 border-amber-300/90 dark:border-amber-800 text-amber-950 dark:text-amber-100 shadow-2xs'
-                          : 'bg-amber-50/70 dark:bg-amber-950/40 border-amber-200/80 dark:border-amber-800/80 text-amber-950 dark:text-amber-100'
+                          ? 'bg-[#FAF4EB] dark:bg-[#221A12] border-[#ECDDC8] dark:border-[#3D3021] text-stone-800 dark:text-stone-200 shadow-2xs'
+                          : 'bg-[#FAF9F5] dark:bg-[#18181B] border-[#E8E4DA] dark:border-[#28272C] text-stone-800 dark:text-stone-200'
                       }`}
                     >
-                      {p.tugasId && (
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-200/70 dark:bg-amber-900/60 px-1.5 py-0.5 rounded-md">
-                            <BookOpen size={10} /> Penugasan Guru
+                      {p.tugasId ? (
+                        <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#ECDDC8]/70 dark:border-[#3D3021]">
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#7A5425] dark:text-[#E8CFB0] bg-[#F1E5D3] dark:bg-[#342717] px-2 py-0.5 rounded-md border border-[#E2D2B8] dark:border-[#4B3A26]">
+                            <BookOpen size={10} className="text-[#8F6533] dark:text-[#D9B27F]" /> Penugasan Guru
                           </span>
                           <button
                             onClick={() => {
@@ -996,29 +1004,46 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                               setNewDocTitle('');
                               setIsNewDocOpen(true);
                             }}
-                            className="editorial-btn bg-amber-800 hover:bg-amber-900 text-white dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100 text-[10px] font-bold py-0.5 px-2 rounded-md flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold py-0.5 px-2.5 rounded-md bg-[#7A5425] hover:bg-[#66441C] text-white dark:bg-[#D9B27F] dark:text-[#251A0C] dark:hover:bg-[#E8C496] shadow-2xs cursor-pointer transition-all active:scale-95"
                             title="Mulai menulis tugas ini"
                           >
                             <Plus size={10} /> Tulis Sekarang
                           </button>
                         </div>
+                      ) : (
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#5C5952] dark:text-[#B8B5AD] bg-[#F1EFEA] dark:bg-[#252528] px-2 py-0.5 rounded-md border border-[#DFDBD0] dark:border-[#36353B]">
+                            Informasi
+                          </span>
+                        </div>
                       )}
-                      <p className="mb-1 leading-relaxed">{p.teks}</p>
-                      <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 flex items-center gap-1">
-                        <Clock size={11} /> {p.waktu}
-                      </span>
+
+                      <div className="text-stone-700 dark:text-stone-300">
+                        <FormattedWoroText text={p.teks} />
+                      </div>
+
+                      <div className="mt-2.5 pt-2 border-t border-stone-200/50 dark:border-stone-800/80 flex items-center justify-between text-[10px] text-stone-400 dark:text-stone-500">
+                        <span className="flex items-center gap-1">
+                          <Clock size={11} className="opacity-70" /> {p.waktu}
+                        </span>
+                        {p.kodeKelas && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400">
+                            {p.kodeKelas === 'Semua' ? 'Semua Kelas' : p.kodeKelas}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
 
-            {/* Kutipan Sastra / Quotes Inspiratif (Dikelola oleh Guru) */}
-            <div className="editorial-card p-5 bg-gradient-to-br from-amber-50/40 via-stone-50 to-stone-100 dark:from-[#1c1917]/40 dark:via-[#18181b] dark:to-[#141416] text-stone-800 dark:text-stone-200 border border-stone-200/80 dark:border-stone-800 relative overflow-hidden shadow-2xs">
-              <blockquote className="font-serif-literary text-xs sm:text-sm leading-relaxed text-stone-800 dark:text-stone-200 italic mb-2 relative z-10 pl-3 border-l-2 border-amber-500/80 dark:border-amber-500/70">
+            {/* Kutipan Sastra / Quotes Inspiratif */}
+            <div className="editorial-card p-4.5 bg-[#FAF9F6] dark:bg-[#161618] text-stone-800 dark:text-stone-200 border border-[#E9E5DB] dark:border-[#28272C] relative overflow-hidden shadow-2xs">
+              <blockquote className="font-serif-literary text-xs sm:text-[13px] leading-relaxed text-stone-700 dark:text-stone-300 italic mb-2 relative z-10 pl-3.5 border-l-3 border-[#C9A874] dark:border-[#8E744A]">
                 “{quoteHarian.teks}”
               </blockquote>
-              <div className="text-right text-[11px] font-semibold text-stone-600 dark:text-stone-400 font-serif-literary">
+              <div className="text-right text-[11px] font-semibold text-stone-500 dark:text-stone-400 font-serif-literary">
                 — {quoteHarian.penulis}
               </div>
             </div>

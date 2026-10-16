@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Megaphone, Trash2, X, Send } from 'lucide-react';
 import { DataService } from '../../../services/dataService';
 import type { Pengumuman } from '../../../types';
+import { FormattedWoroText } from '../../Common/FormattedWoroText';
 
 interface ModalWoroWoroProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
       <div className="editorial-card w-full max-w-lg bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-[#FAF4EB] dark:bg-[#282015] text-[#8F6533] dark:text-[#E2C7A7] border border-[#ECDDC8] dark:border-[#3E3121] flex items-center justify-center shrink-0">
               <Megaphone size={16} />
             </div>
             <div>
@@ -104,13 +105,13 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
               pengumumanList.map((p) => (
                 <div
                   key={p.id}
-                  className="p-2.5 bg-stone-50 dark:bg-stone-900/60 rounded-lg border border-stone-200/70 dark:border-stone-800 flex justify-between items-start gap-2 text-xs"
+                  className="p-3 bg-[#FAF9F5] dark:bg-[#18181A] rounded-xl border border-[#E8E4DA] dark:border-[#27262A] flex justify-between items-start gap-2.5 text-xs"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-stone-800 dark:text-stone-200 leading-snug break-words">
-                      {p.teks}
-                    </p>
-                    <span className="text-[10px] text-stone-400 dark:text-stone-500 mt-1 block">
+                    <div className="text-stone-800 dark:text-stone-200 text-xs">
+                      <FormattedWoroText text={p.teks} />
+                    </div>
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500 mt-1.5 block font-mono">
                       {p.waktu}
                     </span>
                   </div>
@@ -118,7 +119,7 @@ export const ModalWoroWoro: React.FC<ModalWoroWoroProps> = ({
                     onClick={async () => {
                       await DataService.hapusPengumuman(p.id);
                     }}
-                    className="p-1 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer shrink-0"
+                    className="p-1.5 rounded-lg text-stone-400 hover:text-[#8C3E3E] hover:bg-[#FDF1F1] dark:hover:bg-[#2A1818] cursor-pointer shrink-0 transition-colors"
                     title="Hapus Pengumuman"
                   >
                     <Trash2 size={13} />

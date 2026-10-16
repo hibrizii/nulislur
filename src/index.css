@@ -101,87 +101,175 @@
   color: #A1A1AA !important;
 }
 
-/* Warna Kuning/Amber: Warm muted gold, bukan laser kuning menusuk mata */
+/* ========================================================
+   LITERARY PASTEL ACCENT SYSTEM (LIGHT & DARK MODE)
+   Eliminating 'AI slop' neon saturation for calm editorial warmth
+   ======================================================== */
+
+/* Light Mode Pastel Calibrations */
+.text-amber-600, .text-amber-700 { color: #8F6533; }
+.bg-amber-50 { background-color: #FAF4EB; }
+.bg-amber-100 { background-color: #F3E8D8; }
+.border-amber-200, .border-amber-300 { border-color: #ECDDC8; }
+.bg-amber-600, .bg-amber-700 { background-color: #8F6533; }
+
+.text-blue-600, .text-blue-700 { color: #365778; }
+.bg-blue-50 { background-color: #EEF3F8; }
+.bg-blue-100 { background-color: #DFEBF6; }
+.border-blue-200, .border-blue-300 { border-color: #D4E2EE; }
+.bg-blue-600, .bg-blue-700 { background-color: #365778; }
+
+.text-emerald-600, .text-emerald-700 { color: #2D6A4F; }
+.bg-emerald-50 { background-color: #EAF3EC; }
+.bg-emerald-100 { background-color: #DBEFE0; }
+.border-emerald-200, .border-emerald-300 { border-color: #CDE3D1; }
+.bg-emerald-600, .bg-emerald-700 { background-color: #2D6A4F; }
+
+.text-purple-600, .text-purple-700 { color: #594673; }
+.bg-purple-50 { background-color: #F3EFF8; }
+.bg-purple-100 { background-color: #EAE3F4; }
+.border-purple-200, .border-purple-300 { border-color: #DFD3ED; }
+.bg-purple-600, .bg-purple-700 { background-color: #594673; }
+
+.text-orange-600, .text-orange-700 { color: #874538; }
+.bg-orange-50 { background-color: #FAF0ED; }
+.bg-orange-100 { background-color: #F5E2DC; }
+.border-orange-200, .border-orange-300 { border-color: #F2D6CF; }
+.bg-orange-600, .bg-orange-700 { background-color: #874538; }
+
+.text-red-600, .text-red-700 { color: #8C3E3E; }
+.bg-red-50 { background-color: #FDF1F1; }
+.bg-red-100 { background-color: #FCE4E4; }
+.border-red-200, .border-red-300 { border-color: #F5D5D5; }
+.bg-red-600, .bg-red-700 { background-color: #8C3E3E; }
+
+/* Dark Mode Eye-Comfort Pastel Accents (No laser neons) */
+/* Amber / Warm Honey */
 .dark .text-amber-300,
 .dark .text-amber-400,
 .dark .text-amber-500,
-.dark .text-amber-600 {
-  color: #D4A359 !important;
+.dark .text-amber-600,
+.dark .text-amber-700 {
+  color: #D9B27F !important;
 }
-
 .dark .text-amber-100,
 .dark .text-amber-200 {
-  color: #E8CBA3 !important;
+  color: #E8CFB0 !important;
+}
+.dark [class*="bg-amber-950"],
+.dark [class*="bg-amber-900"] {
+  background-color: #221A12 !important;
+}
+.dark [class*="border-amber-800"],
+.dark [class*="border-amber-900"] {
+  border-color: #3D3021 !important;
 }
 
-.dark .text-amber-700,
-.dark .text-amber-800,
-.dark .text-amber-900,
-.dark .text-amber-950 {
-  color: #E0B579 !important;
-}
-
-/* Warna Biru: Calming periwinkle/linear blue, bukan neon menyala */
+/* Blue / Mist Blue */
+.dark .text-blue-300,
 .dark .text-blue-400,
 .dark .text-blue-500,
 .dark .text-blue-600,
 .dark .text-blue-700 {
-  color: #7AA2F7 !important;
+  color: #A4C2E0 !important;
+}
+.dark .text-blue-100,
+.dark .text-blue-200 {
+  color: #C3D9EF !important;
+}
+.dark [class*="bg-blue-950"],
+.dark [class*="bg-blue-900"] {
+  background-color: #16202B !important;
+}
+.dark [class*="border-blue-800"],
+.dark [class*="border-blue-900"] {
+  border-color: #26384A !important;
 }
 
-.dark .text-blue-200,
-.dark .text-blue-300 {
-  color: #A0BDF8 !important;
-}
-
-.dark .text-blue-900,
-.dark .text-blue-950 {
-  color: #7AA2F7 !important;
-}
-
-/* Warna Hijau/Emerald: Soft sage/mint, bukan neon hijau */
+/* Emerald / Soft Sage */
 .dark .text-emerald-300,
 .dark .text-emerald-400,
 .dark .text-emerald-500,
-.dark .text-emerald-600 {
-  color: #68B687 !important;
+.dark .text-emerald-600,
+.dark .text-emerald-700 {
+  color: #9BCBA8 !important;
 }
-
 .dark .text-emerald-100,
 .dark .text-emerald-200 {
-  color: #93CEAA !important;
+  color: #BFDFCA !important;
+}
+.dark [class*="bg-emerald-950"],
+.dark [class*="bg-emerald-900"] {
+  background-color: #17241A !important;
+}
+.dark [class*="border-emerald-800"],
+.dark [class*="border-emerald-900"] {
+  border-color: #283D2D !important;
 }
 
-.dark .text-emerald-700,
-.dark .text-emerald-800,
-.dark .text-emerald-900,
-.dark .text-emerald-950 {
-  color: #8CC4A2 !important;
-}
-
-/* Warna Merah: Muted coral rose, tidak menusuk */
-.dark .text-red-400,
-.dark .text-red-500,
-.dark .text-red-600 {
-  color: #E06C75 !important;
-}
-
-.dark .text-red-200,
-.dark .text-red-300 {
-  color: #F1989F !important;
-}
-
-.dark .text-red-700,
-.dark .text-red-800,
-.dark .text-red-900 {
-  color: #E06C75 !important;
-}
-
-/* Warna Ungu */
+/* Purple / Dusty Lilac */
+.dark .text-purple-300,
 .dark .text-purple-400,
 .dark .text-purple-500,
-.dark .text-purple-600 {
-  color: #A996EB !important;
+.dark .text-purple-600,
+.dark .text-purple-700 {
+  color: #CBBDE2 !important;
+}
+.dark .text-purple-100,
+.dark .text-purple-200 {
+  color: #DFD5EF !important;
+}
+.dark [class*="bg-purple-950"],
+.dark [class*="bg-purple-900"] {
+  background-color: #221A2A !important;
+}
+.dark [class*="border-purple-800"],
+.dark [class*="border-purple-900"] {
+  border-color: #3A2C46 !important;
+}
+
+/* Red / Dusty Rose */
+.dark .text-red-300,
+.dark .text-red-400,
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-red-700 {
+  color: #E49D9D !important;
+}
+.dark .text-red-100,
+.dark .text-red-200 {
+  color: #F2C1C1 !important;
+}
+.dark [class*="bg-red-950"],
+.dark [class*="bg-red-900"],
+.dark [class*="bg-rose-950"],
+.dark [class*="bg-rose-900"] {
+  background-color: #261616 !important;
+}
+.dark [class*="border-red-800"],
+.dark [class*="border-red-900"] {
+  border-color: #442424 !important;
+}
+
+/* Orange / Terracotta */
+.dark .text-orange-300,
+.dark .text-orange-400,
+.dark .text-orange-500,
+.dark .text-orange-600,
+.dark .text-orange-700 {
+  color: #E4A599 !important;
+}
+.dark .text-orange-100,
+.dark .text-orange-200 {
+  color: #F2C5BD !important;
+}
+.dark [class*="bg-orange-950"],
+.dark [class*="bg-orange-900"] {
+  background-color: #281A18 !important;
+}
+.dark [class*="border-orange-800"],
+.dark [class*="border-orange-900"] {
+  border-color: #462B26 !important;
 }
 
 .editorial-input {
