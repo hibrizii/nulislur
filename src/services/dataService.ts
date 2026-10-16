@@ -4845,7 +4845,7 @@ export const DataService = {
     };
   },
 
-  async saveYjsDocState(docId: string, state: Uint8Array): Promise<void> {
+  async saveYjsDocState(docId: string, state: Uint8Array, localOnly: boolean = false): Promise<void> {
     if (!docId || !state || state.byteLength <= 4) return;
     try {
       const b64 = uint8ArrayToBase64(state);
@@ -4854,6 +4854,9 @@ export const DataService = {
           localStorage.setItem(`collab_yjs_${docId}`, b64);
         } catch {}
       }
+      if (localOnly) return;
+      // Safety guard: Jangan simpan jika ukuran binary > 50 KB untuk mencegah pembengkakan egress kuota Supabase
+      if (state.byteLength > 50 * 1024) return;
       if (isSupabaseConfigured) {
         await supabase.from('pengaturan').upsert({
           key: `collab_yjs_${docId}`,

@@ -427,7 +427,7 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html);
         if (collabSession) {
           const yjsState = collabSession.getYjsState();
-          await DataService.saveYjsDocState(docId, yjsState);
+          await DataService.saveYjsDocState(docId, yjsState, true);
         }
         setSaveStatus('saved');
         isDirtyRef.current = false;

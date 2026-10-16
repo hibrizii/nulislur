@@ -33,8 +33,8 @@ export const ModalNewClass: React.FC<ModalNewClassProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="editorial-card w-full max-w-md my-auto max-h-[90vh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
@@ -138,8 +138,8 @@ export const ModalJoinClass: React.FC<ModalJoinClassProps> = ({ isOpen, onClose,
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="editorial-card w-full max-w-md my-auto max-h-[90vh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
@@ -239,8 +239,8 @@ export const ModalEditClass: React.FC<ModalEditClassProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="editorial-card w-full max-w-md my-auto max-h-[90vh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">

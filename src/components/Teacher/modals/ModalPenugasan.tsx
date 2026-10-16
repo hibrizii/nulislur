@@ -141,8 +141,8 @@ export const ModalPenugasan: React.FC<ModalPenugasanProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="editorial-card w-full max-w-lg bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="editorial-card w-full max-w-lg my-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl overflow-y-auto max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2.5">

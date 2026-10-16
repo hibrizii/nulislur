@@ -1205,8 +1205,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       {/* Modal Buat Tulisan Baru */}
       {isNewDocOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 shadow-2xl">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="editorial-card w-full max-w-md my-auto max-h-[88vh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-5 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center shrink-0">
@@ -1448,7 +1448,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <div className="flex items-center justify-end gap-2 pt-3 mt-4 border-t border-stone-100 dark:border-stone-800">
                 <button
                   type="button"
                   onClick={() => {
@@ -1491,8 +1491,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       {/* Modal Publikasi ke Pojok Baca */}
       {publishDocId && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 text-center">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in">
+          <div className="editorial-card w-full max-w-md my-auto max-h-[90dvh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 text-center">
             <h2 className="text-xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 mb-2 flex items-center justify-center gap-2">
               <BookOpen size={20} className="text-blue-600 dark:text-blue-400" /> Publikasikan ke Pojok Baca
             </h2>
@@ -1533,8 +1533,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       {/* Modal Klaim Karya Lama (Migrasi) */}
       {isRedeemModalOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="editorial-card w-full max-w-lg bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 max-h-[90vh] flex flex-col justify-between overflow-y-auto">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in">
+          <div className="editorial-card w-full max-w-lg my-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-6 sm:p-7 max-h-[90vh] flex flex-col justify-between overflow-y-auto">
             <div>
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
                 <div className="flex items-center gap-2.5">

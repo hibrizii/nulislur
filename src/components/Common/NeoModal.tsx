@@ -34,8 +34,8 @@ export const NeoModal: React.FC<NeoModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="editorial-card w-full max-w-md bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 p-6 sm:p-7 text-center shadow-xl">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/40 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="editorial-card w-full max-w-md my-auto max-h-[90dvh] overflow-y-auto bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 p-6 sm:p-7 text-center shadow-xl">
         <h2 className="text-xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 mb-2">
           {title}
         </h2>
