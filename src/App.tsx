@@ -25,12 +25,26 @@ const ViewLoadingFallback = () => (
 );
 
 export function App() {
+  const [isAdminView, setIsAdminView] = useState(false);
+
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const normalizeSessionUser = (u: UserAccount | null): UserAccount | null => {
+      if (u && u.username === 'hibri' && u.role === 'admin') {
+        const fixed: UserAccount = { ...u, role: 'guru' };
+        try {
+          sessionStorage.setItem('nulislur_session', JSON.stringify(fixed));
+          localStorage.setItem('nulislur_session', JSON.stringify(fixed));
+        } catch {}
+        return fixed;
+      }
+      return u;
+    };
+
     // Prioritaskan sessionStorage agar 2 tab di peramban yang sama dapat login sebagai akun berbeda (Guru & Siswa)
     const session = sessionStorage.getItem('nulislur_session');
     if (session) {
       try {
-        return JSON.parse(session);
+        return normalizeSessionUser(JSON.parse(session));
       } catch (e) {
         console.error('Failed to parse sessionStorage', e);
       }
@@ -38,8 +52,10 @@ export function App() {
     const saved = localStorage.getItem('nulislur_session');
     if (saved) {
       try {
-        const user = JSON.parse(saved);
-        sessionStorage.setItem('nulislur_session', saved);
+        const user = normalizeSessionUser(JSON.parse(saved));
+        if (user) {
+          sessionStorage.setItem('nulislur_session', JSON.stringify(user));
+        }
         return user;
       } catch (e) {
         console.error('Failed to parse localStorage', e);
@@ -54,13 +70,16 @@ export function App() {
   }, []);
 
   const handleAuthSuccess = (user: UserAccount) => {
-    setCurrentUser(user);
-    sessionStorage.setItem('nulislur_session', JSON.stringify(user));
-    localStorage.setItem('nulislur_session', JSON.stringify(user));
+    const finalUser = user.username === 'hibri' && user.role === 'admin' ? { ...user, role: 'guru' as const } : user;
+    setCurrentUser(finalUser);
+    setIsAdminView(false);
+    sessionStorage.setItem('nulislur_session', JSON.stringify(finalUser));
+    localStorage.setItem('nulislur_session', JSON.stringify(finalUser));
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setIsAdminView(false);
     sessionStorage.removeItem('nulislur_session');
     localStorage.removeItem('nulislur_session');
   };
@@ -73,7 +92,19 @@ export function App() {
         ) : currentUser.role === 'admin' ? (
           <AdminDashboard user={currentUser} onLogout={handleLogout} />
         ) : currentUser.role === 'guru' ? (
-          <TeacherDashboard user={currentUser} onLogout={handleLogout} />
+          isAdminView ? (
+            <AdminDashboard
+              user={{ ...currentUser, role: 'admin' }}
+              onLogout={handleLogout}
+              onBackToTeacher={() => setIsAdminView(false)}
+            />
+          ) : (
+            <TeacherDashboard
+              user={currentUser}
+              onLogout={handleLogout}
+              onOpenAdmin={currentUser.username === 'hibri' ? () => setIsAdminView(true) : undefined}
+            />
+          )
         ) : (
           <StudentPortal user={currentUser} onLogout={handleLogout} />
         )}

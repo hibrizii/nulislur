@@ -790,9 +790,11 @@ export const DataService = {
         }
 
         let role: UserRole = (data.role as UserRole) || 'siswa';
-        // Akun hibri otomatis memiliki akses admin
-        if (username === 'hibri' || username === 'admin') {
+        // Akun admin memiliki akses admin, akun hibri adalah guru pengajar
+        if (username === 'admin') {
           role = 'admin';
+        } else if (username === 'hibri') {
+          role = 'guru';
         } else {
           try {
             const { data: adminSetting } = await supabase.from('pengaturan').select('val').eq('key', 'admin_users').maybeSingle();
@@ -831,8 +833,10 @@ export const DataService = {
     if (user.password !== password) {
       return { success: false, message: 'Kata sandi tidak cocok.' };
     }
-    if (username === 'hibri' || username === 'admin') {
+    if (username === 'admin') {
       user.role = 'admin';
+    } else if (username === 'hibri') {
+      user.role = 'guru';
     }
     return { success: true, user };
   },
@@ -5097,7 +5101,7 @@ export const DataService = {
           return data.map(u => ({
             username: u.username,
             nama: u.nama,
-            role: (u.username === 'hibri' ? 'admin' : u.role) as UserRole,
+            role: (u.username === 'admin' ? 'admin' : (u.role || 'guru')) as UserRole,
             kodeKelas: u.kode_kelas,
             namaKelas: u.nama_kelas,
             sekolahId: u.sekolah_id || 'sman1-gondanglegi',

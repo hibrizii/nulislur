@@ -21,7 +21,8 @@ import {
   Radio,
   FileText,
   School,
-  UserCheck
+  UserCheck,
+  ArrowLeft
 } from 'lucide-react';
 import { DataService } from '../../services/dataService';
 import type { UserAccount, Sekolah, FiturPaketSekolah } from '../../types';
@@ -31,6 +32,7 @@ import { NeoModal } from '../Common/NeoModal';
 interface AdminDashboardProps {
   user: UserAccount;
   onLogout: () => void;
+  onBackToTeacher?: () => void;
 }
 
 const TIER_PRESETS: Record<'free' | 'starter' | 'pro' | 'enterprise', FiturPaketSekolah> = {
@@ -68,7 +70,7 @@ const TIER_PRESETS: Record<'free' | 'starter' | 'pro' | 'enterprise', FiturPaket
   },
 };
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, onBackToTeacher }) => {
   const [activeTab, setActiveTab] = useState<'sekolah' | 'guru' | 'platform'>('sekolah');
   const [sekolahList, setSekolahList] = useState<Sekolah[]>([]);
   const [guruList, setGuruList] = useState<UserAccount[]>([]);
@@ -366,6 +368,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {onBackToTeacher && (
+              <button
+                onClick={onBackToTeacher}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-stone-200 flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+                title="Kembali ke Dashboard Guru"
+              >
+                <ArrowLeft size={13} />
+                <span>Kembali ke Guru</span>
+              </button>
+            )}
+
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-xs text-stone-700 dark:text-stone-300 font-medium">
               <Shield size={14} className="text-amber-600 dark:text-amber-400" />
               <span>{user.nama || 'Administrator'} (@{user.username})</span>

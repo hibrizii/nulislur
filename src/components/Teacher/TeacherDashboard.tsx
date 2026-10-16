@@ -30,9 +30,10 @@ import { TeacherEditorView } from './TeacherEditorView';
 interface TeacherDashboardProps {
   user: UserAccount;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout }) => {
+export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onOpenAdmin }) => {
   const [activeTab, setActiveTab] = useState<TeacherTab>('pantauan');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
@@ -506,6 +507,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogo
         onOpenWoroModal={() => setIsWoroModalOpen(true)}
         onOpenQuoteModal={() => setIsQuoteModalOpen(true)}
         onLogout={() => setIsLogoutModalOpen(true)}
+        onOpenAdmin={onOpenAdmin}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         isCollapsed={isSidebarCollapsed}

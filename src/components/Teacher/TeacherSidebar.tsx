@@ -10,6 +10,7 @@ import {
   Megaphone, 
   Sparkles, 
   ShieldAlert, 
+  Shield,
   Bell, 
   BellOff, 
   LogOut,
@@ -36,6 +37,7 @@ interface TeacherSidebarProps {
   onOpenWoroModal: () => void;
   onOpenQuoteModal: () => void;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
   isCollapsed?: boolean;
@@ -55,6 +57,7 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
   onOpenWoroModal,
   onOpenQuoteModal,
   onLogout,
+  onOpenAdmin,
   isOpenMobile,
   onCloseMobile,
   isCollapsed = false,
@@ -431,6 +434,20 @@ export const TeacherSidebar: React.FC<TeacherSidebarProps> = ({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Akses Panel Admin Khusus */}
+          {onOpenAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              title="Buka Panel Admin & Lisensi Sekolah"
+              className={`editorial-btn py-2 text-xs font-semibold bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 hover:opacity-90 transition-opacity cursor-pointer flex items-center justify-center ${
+                isCollapsed ? 'lg:px-0' : 'w-full gap-1.5'
+              }`}
+            >
+              <Shield size={14} className="shrink-0 text-amber-400 dark:text-amber-600" />
+              <span className={isCollapsed ? 'lg:hidden' : ''}>Panel Admin</span>
+            </button>
           )}
 
           {/* Tombol Logout */}
