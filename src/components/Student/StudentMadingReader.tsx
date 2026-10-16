@@ -3,7 +3,7 @@ import { DataService, getWarnaTopik, stringToColor } from '../../services/dataSe
 import type { Dokumen } from '../../types';
 import { ArrowLeft, Heart, MessageSquare, Send, AlertCircle, Eye, X, Share2, Sparkles, Clock } from 'lucide-react';
 import { ThemeToggle } from '../Common/ThemeToggle';
-import { prepareContentForExport } from '../../utils/exportDocument';
+import { prepareContentForExport, cleanTitle } from '../../utils/exportDocument';
 
 interface StudentMadingReaderProps {
   docId: string;
@@ -232,7 +232,7 @@ export const StudentMadingReader: React.FC<StudentMadingReaderProps> = ({
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 leading-[1.2] mb-5 tracking-tight">
-              {doc.judul}
+              {cleanTitle(doc.judul)}
             </h1>
 
             <div className="flex flex-wrap items-center gap-3 text-sm text-stone-600 dark:text-stone-300 font-medium pt-2">

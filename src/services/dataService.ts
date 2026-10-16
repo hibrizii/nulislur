@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import type { Dokumen, UserAccount, KelasRoom, LiveStatus, PenilaianRubrik, MigrasiRedeemItem, Penugasan, Pengumuman, CuitanItem, CuitanKomentar, KolaboratorAnggota } from '../types';
 import { initialMigrasiRedeemData } from '../data/migrasi_redeem_data';
 import { uint8ArrayToBase64, base64ToUint8Array } from '../utils/binaryUtils';
+import { cleanTitle } from '../utils/exportDocument';
 
 // Helper Waktu Standar Indonesia
 export function getWaktuSekarang(): string {
@@ -167,7 +168,7 @@ function mapDokumenRow(row: Record<string, unknown>): Dokumen {
     username: String(row.username || ''),
     kodeKelas: kKode,
     namaKelas: resolvedNamaKelas,
-    judul: String(row.judul || ''),
+    judul: cleanTitle(String(row.judul || '')),
     teks: String(row.teks || ''),
     status: (row.status as 'Draf' | 'Terkumpul' | 'Selesai') || 'Draf',
     pelanggaran: Number(row.pelanggaran || 0),
@@ -1463,18 +1464,35 @@ export const DataService = {
 
           // Perbarui Cuitan, Komentar Cuitan, dan Likes Cuitan
           try {
-            const cuitanList = inMemoryCuitanCache || (await this.getCuitanList());
+            let cuitanList: CuitanItem[] = [];
+            if (isSupabaseConfigured) {
+              const { data: remoteCuitan } = await supabase
+                .from('pengaturan')
+                .select('val')
+                .eq('key', 'cuitan_list')
+                .maybeSingle();
+              if (remoteCuitan && remoteCuitan.val) {
+                const parsed = typeof remoteCuitan.val === 'string' ? JSON.parse(remoteCuitan.val) : remoteCuitan.val;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  cuitanList = parsed;
+                }
+              }
+            }
+            if (cuitanList.length === 0) {
+              cuitanList = inMemoryCuitanCache || (await this.getCuitanList());
+            }
+
             let cuitanChanged = false;
             const updatedCuitanList = cuitanList.map((c) => {
               let itemChanged = false;
               let cUsername = c.username;
-              if (c.username === cleanOld) {
+              if (c.username.toLowerCase() === cleanOld) {
                 cUsername = cleanNew;
                 itemChanged = true;
               }
               let cLikes = c.likes || [];
-              if (cLikes.includes(cleanOld)) {
-                cLikes = cLikes.map((u) => (u === cleanOld ? cleanNew : u));
+              if (cLikes.some((u) => u.toLowerCase() === cleanOld)) {
+                cLikes = cLikes.map((u) => (u.toLowerCase() === cleanOld ? cleanNew : u));
                 itemChanged = true;
               }
               let cKomentar = c.komentar || [];
@@ -1483,16 +1501,16 @@ export const DataService = {
                 let kUsername = k.username;
                 let kReplyTo = k.replyToUsername;
                 let kLikes = k.likes || [];
-                if (k.username === cleanOld) {
+                if (k.username.toLowerCase() === cleanOld) {
                   kUsername = cleanNew;
                   komChanged = true;
                 }
-                if (k.replyToUsername === cleanOld) {
+                if (k.replyToUsername && k.replyToUsername.toLowerCase() === cleanOld) {
                   kReplyTo = cleanNew;
                   komChanged = true;
                 }
-                if (kLikes.includes(cleanOld)) {
-                  kLikes = kLikes.map((u) => (u === cleanOld ? cleanNew : u));
+                if (kLikes.some((u) => u.toLowerCase() === cleanOld)) {
+                  kLikes = kLikes.map((u) => (u.toLowerCase() === cleanOld ? cleanNew : u));
                   komChanged = true;
                 }
                 if (komChanged) {
@@ -2390,7 +2408,7 @@ export const DataService = {
     const existingLocalDoc = local.dokumen ? local.dokumen[id] : undefined;
 
     if (isSupabaseConfigured) {
-      let safeJudul = judul;
+      let safeJudul = cleanTitle(judul);
       let safeTeks = teks;
 
       // Perlindungan jika teks / judul kosong dikirim:
@@ -2467,7 +2485,7 @@ export const DataService = {
       const safeTeks = (isIncomingTeksEmpty && currentHasContent) ? existing.teks : teks;
       const safeJudul = (isIncomingJudulEmpty && existing.judul && existing.judul.trim().length > 0) ? existing.judul : judul;
 
-      local.dokumen[id].judul = safeJudul;
+      local.dokumen[id].judul = cleanTitle(safeJudul);
       local.dokumen[id].teks = safeTeks;
       local.dokumen[id].waktuEdit = waktu;
       if (topik !== undefined) local.dokumen[id].topik = topik;
@@ -4770,6 +4788,30 @@ export const DataService = {
     updatedList[targetIdx] = cuitan;
 
     saveCuitanState(updatedList, true);
+  },
+
+  async editCuitan(cuitanId: string, newTeks: string, username: string): Promise<{ success: boolean; message: string }> {
+    const cleanTeks = newTeks.trim();
+    if (!cleanTeks) return { success: false, message: 'Isi cuitan tidak boleh kosong.' };
+    if (cleanTeks.length > 350) return { success: false, message: 'Panjang cuitan maksimal 350 karakter.' };
+
+    const list = inMemoryCuitanCache || (await this.getCuitanList());
+    const targetIdx = list.findIndex((c) => c.id === cuitanId);
+    if (targetIdx === -1) return { success: false, message: 'Cuitan tidak ditemukan.' };
+
+    const cuitan = list[targetIdx];
+    if (cuitan.username.toLowerCase() !== username.toLowerCase()) {
+      return { success: false, message: 'Anda hanya dapat mengedit cuitan milik sendiri.' };
+    }
+
+    const updatedList = [...list];
+    updatedList[targetIdx] = {
+      ...cuitan,
+      teks: cleanTeks,
+    };
+
+    saveCuitanState(updatedList, true);
+    return { success: true, message: 'Cuitan berhasil diperbarui!' };
   },
 
   async hapusCuitan(cuitanId: string): Promise<void> {

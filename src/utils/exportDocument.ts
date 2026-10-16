@@ -38,6 +38,33 @@ export function cleanSnippet(html: string): string {
 }
 
 /**
+ * Membersihkan judul naskah dari tag HTML (seperti <i>, <b>, <mark>, <span>, dll.)
+ * serta mendecode HTML entity (&nbsp;, &amp;, &quot;, &#39;, &lt;, &gt;) dan membersihkan zero-width space
+ */
+export function cleanTitle(title?: string): string {
+  if (!title) return 'Tanpa Judul';
+
+  let clean = title
+    // Hapus seluruh tag HTML pembuka, penutup, atau self-closing
+    .replace(/<[^>]+>/g, '')
+    // Decode HTML entities
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    // Hapus karakter zero-width space / invisible formatting characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    // Rapikan spasi berlebih
+    .replace(/[\u00a0\s]+/g, ' ')
+    .trim();
+
+  return clean || 'Tanpa Judul';
+}
+
+/**
  * Memformat dan menstandardisasi HTML naskah untuk diekspor ke Word (.doc) dan PDF:
  * 1. Menghapus tag mark feedback guru tapi mempertahankan isi teksnya.
  * 2. Mengubah list berurutan (<ol> / <li>) bertingkat menjadi nomor subbab eksplisit (1., 1.1, 1.1.1)
@@ -377,7 +404,7 @@ export function exportToPdf(
   }
 
   const { cleanHtml, footnotes } = prepareContentForExport(options.htmlContent);
-  const docTitle = options.title || 'Naskah Tulisan';
+  const docTitle = cleanTitle(options.title);
 
   const html = `<!DOCTYPE html>
 <html lang="id">
@@ -693,10 +720,6 @@ export function exportToWord(
 ) {
   const options = normalizeOptions(optionsOrTitle, author, htmlContent, className);
   const { wordHtml, footnotes } = prepareContentForExport(options.htmlContent);
-  const cleanFilename = (options.title || 'naskah')
-    .replace(/[^a-zA-Z0-9\s_-]/g, '')
-    .trim()
-    .replace(/\s+/g, '_');
 
   const fileContent = `
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -886,7 +909,7 @@ export function exportToWord(
 </head>
 <body>
   <div class="Section1">
-    <h1>${options.title || 'Tanpa Judul'}</h1>
+    <h1>${cleanTitle(options.title)}</h1>
     <div class="meta">
       Penulis: <strong>${options.author}</strong> ${options.className ? `(${options.className})` : ''} | Tanggal: ${options.date || new Date().toLocaleDateString('id-ID')} | NulisLur
     </div>
@@ -920,6 +943,7 @@ export function exportToWord(
     type: 'application/msword;charset=utf-8',
   });
 
+  const cleanFilename = cleanTitle(options.title).replace(/[/\\?%*:|"<>]/g, '-').trim();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

@@ -8,7 +8,8 @@ import {
   Sparkles, 
   Clock, 
   AlertCircle,
-  Check
+  Check,
+  Edit3
 } from 'lucide-react';
 import { DataService, stringToColor } from '../../services/dataService';
 import type { CuitanItem, CuitanKomentar } from '../../types';
@@ -31,6 +32,10 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
   const [isSubmittingCuitan, setIsSubmittingCuitan] = useState<boolean>(false);
   const [cuitanError, setCuitanError] = useState<string>('');
   const [cuitanSuccessNotice, setCuitanSuccessNotice] = useState<string>('');
+
+  // State Edit Cuitan
+  const [editingCuitan, setEditingCuitan] = useState<{ id: string; teks: string } | null>(null);
+  const [isUpdatingCuitan, setIsUpdatingCuitan] = useState<boolean>(false);
 
   // State Komentar & Balasan Terbuka
   // Set of cuitanId yang kolom komentarnya sedang dibuka
@@ -65,10 +70,29 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
   // 2. Cek apakah user (siswa) sudah membuat cuitan hari ini
   const hasPostedToday = useMemo(() => {
     if (currentUser.role === 'guru') return false; // Guru bebas cuit tanpa batas
+    const cleanCurrent = currentUser.username.toLowerCase();
     return cuitanList.some(
-      (c) => c.username === currentUser.username && DataService.isCuitanHariIni(c)
+      (c) => c.username.toLowerCase() === cleanCurrent && DataService.isCuitanHariIni(c)
     );
   }, [cuitanList, currentUser.username, currentUser.role]);
+
+  // Handler Simpan Edit Cuitan
+  const handleSaveEditCuitan = async () => {
+    if (!editingCuitan || !editingCuitan.teks.trim()) return;
+    setIsUpdatingCuitan(true);
+    try {
+      const res = await DataService.editCuitan(editingCuitan.id, editingCuitan.teks, currentUser.username);
+      if (res.success) {
+        setEditingCuitan(null);
+      } else {
+        alert(res.message);
+      }
+    } catch {
+      alert('Terjadi kesalahan saat menyimpan perubahan cuitan.');
+    } finally {
+      setIsUpdatingCuitan(false);
+    }
+  };
 
   // 3. Linimasa Publik (Cuitan bersifat publik untuk seluruh sekolah)
   const filteredCuitan = cuitanList;
@@ -318,17 +342,17 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
       </div>
 
       {/* 2. Form Buat Cuitan Baru (Atau Informasi Jatah Habis) */}
-      <div className="editorial-card p-4 sm:p-5 bg-white dark:bg-[#141416] rounded-2xl border border-stone-200/80 dark:border-stone-800 shadow-2xs">
+      <div className="editorial-card p-4 sm:p-5 bg-white dark:bg-[#161618] rounded-2xl shadow-xs">
         {hasPostedToday ? (
           /* Jatah cuitan habis hari ini */
-          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 text-xs text-amber-900 dark:text-amber-200">
-            <Sparkles size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-[#FAF4EB] dark:bg-[#221A12] text-xs text-[#7A5425] dark:text-[#E8CFB0]">
+            <Sparkles size={16} className="text-[#8F6533] dark:text-[#D9B27F] shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
               <p className="font-semibold text-stone-900 dark:text-stone-100">
                 Kamu telah membagikan cuitan hari ini.
               </p>
               <p className="text-stone-600 dark:text-stone-300 text-[11px] leading-relaxed">
-                Kamu dapat membuat cuitan baru lagi besok. Silakan nikmati membaca dan saling berbalas komentar di linimasa!
+                Kamu dapat membuat cuitan baru lagi besok.
               </p>
             </div>
           </div>
@@ -405,10 +429,12 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
           </div>
         ) : (
           filteredCuitan.map((cuitan) => {
-            const isLiked = (cuitan.likes || []).includes(currentUser.username);
-            const canDelete = cuitan.username === currentUser.username || currentUser.role === 'guru';
+            const isLiked = (cuitan.likes || []).some((u) => u.toLowerCase() === currentUser.username.toLowerCase());
+            const canEdit = cuitan.username.toLowerCase() === currentUser.username.toLowerCase();
+            const canDelete = cuitan.username.toLowerCase() === currentUser.username.toLowerCase() || currentUser.role === 'guru';
             const commentsCount = (cuitan.komentar || []).length;
             const isCommentsOpen = Boolean(openComments[cuitan.id]);
+            const isEditingThis = editingCuitan?.id === cuitan.id;
 
             // Organisir komentar ke dalam 2 level: Level 1 (Utama) dan Level 2 (Balasan)
             const rootComments = (cuitan.komentar || []).filter((k) => !k.parentId);
@@ -423,9 +449,9 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
             return (
               <article
                 key={cuitan.id}
-                className="editorial-card p-4 sm:p-5 bg-white dark:bg-[#141416] rounded-2xl border border-stone-200/80 dark:border-stone-800 shadow-2xs hover:border-stone-300 dark:hover:border-stone-750 transition-colors"
+                className="editorial-card p-4 sm:p-5 bg-white dark:bg-[#161618] rounded-2xl shadow-xs transition-shadow"
               >
-                {/* Header Cuitan: Avatar + @username + Waktu + Hapus */}
+                {/* Header Cuitan: Avatar + @username + Waktu + Edit/Hapus */}
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <div className="flex items-center gap-2 min-w-0">
                     <div
@@ -452,21 +478,66 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
                     </div>
                   </div>
 
-                  {canDelete && (
-                    <button
-                      onClick={() => setDeleteConfirm({ type: 'cuitan', cuitanId: cuitan.id })}
-                      className="text-stone-400 hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer transition-colors"
-                      title="Hapus cuitan ini"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {canEdit && !isEditingThis && (
+                      <button
+                        onClick={() => setEditingCuitan({ id: cuitan.id, teks: cuitan.teks })}
+                        className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer transition-colors"
+                        title="Edit cuitan ini"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => setDeleteConfirm({ type: 'cuitan', cuitanId: cuitan.id })}
+                        className="text-stone-400 hover:text-[#8C3E3E] dark:hover:text-[#E49D9D] p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer transition-colors"
+                        title="Hapus cuitan ini"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Teks Isi Cuitan */}
-                <div className="text-stone-800 dark:text-stone-200 text-xs sm:text-sm font-serif-literary leading-relaxed mb-3 whitespace-pre-wrap break-words">
-                  {cuitan.teks}
-                </div>
+                {/* Teks Isi Cuitan / Mode Edit Inline */}
+                {isEditingThis ? (
+                  <div className="space-y-2 mb-3 pt-1">
+                    <textarea
+                      value={editingCuitan.teks}
+                      onChange={(e) => setEditingCuitan({ ...editingCuitan, teks: e.target.value })}
+                      maxLength={350}
+                      rows={3}
+                      className="editorial-input w-full p-2.5 text-xs sm:text-sm bg-stone-50 dark:bg-stone-900 text-stone-800 dark:text-stone-200 rounded-xl resize-none border border-stone-200 dark:border-stone-700 focus:outline-none"
+                    />
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400 font-mono">
+                        {editingCuitan.teks.length}/350
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCuitan(null)}
+                          className="px-2.5 py-1 text-xs rounded-lg text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isUpdatingCuitan || !editingCuitan.teks.trim()}
+                          onClick={handleSaveEditCuitan}
+                          className="px-3 py-1 text-xs font-semibold rounded-lg bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 cursor-pointer transition-all disabled:opacity-50"
+                        >
+                          {isUpdatingCuitan ? 'Menyimpan...' : 'Simpan'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-stone-800 dark:text-stone-200 text-xs sm:text-sm font-serif-literary leading-relaxed mb-3 whitespace-pre-wrap break-words">
+                    {cuitan.teks}
+                  </div>
+                )}
 
                 {/* Baris Tombol Aksi: Suka & Komentar */}
                 <div className="flex items-center gap-4 pt-2.5 border-t border-stone-100 dark:border-stone-800/80 text-xs text-stone-500 dark:text-stone-400">
@@ -541,9 +612,9 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
                       <div className="space-y-3 pt-1">
                         {rootComments.map((comment) => {
                           const replies = repliesByParentId[comment.id] || [];
-                          const isCommentLiked = (comment.likes || []).includes(currentUser.username);
+                          const isCommentLiked = (comment.likes || []).some((u) => u.toLowerCase() === currentUser.username.toLowerCase());
                           const canDeleteComment =
-                            comment.username === currentUser.username || currentUser.role === 'guru';
+                            comment.username.toLowerCase() === currentUser.username.toLowerCase() || currentUser.role === 'guru';
 
                           return (
                             <div key={comment.id} className="group/c1">
@@ -622,9 +693,9 @@ export const LinimasaCuitan: React.FC<LinimasaCuitanProps> = ({ currentUser }) =
                               {(replies.length > 0 || (activeReplyBox && activeReplyBox.parentId === comment.id)) && (
                                 <div className="border-l-2 border-stone-200 dark:border-stone-800 ml-3 pl-3 sm:ml-4 sm:pl-3.5 mt-2 space-y-2">
                                   {replies.map((reply) => {
-                                    const isReplyLiked = (reply.likes || []).includes(currentUser.username);
+                                    const isReplyLiked = (reply.likes || []).some((u) => u.toLowerCase() === currentUser.username.toLowerCase());
                                     const canDeleteReply =
-                                      reply.username === currentUser.username || currentUser.role === 'guru';
+                                      reply.username.toLowerCase() === currentUser.username.toLowerCase() || currentUser.role === 'guru';
 
                                     return (
                                       <div key={reply.id} className="flex items-start gap-2">

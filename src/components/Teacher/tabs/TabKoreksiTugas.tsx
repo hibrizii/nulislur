@@ -33,7 +33,7 @@ import {
   hitungPenilaianOtomatis
 } from '../../../services/dataService';
 import type { Dokumen, UserAccount, Komentar, Penugasan } from '../../../types';
-import { exportToPdf, exportToWord, cleanSnippet } from '../../../utils/exportDocument';
+import { exportToPdf, exportToWord, cleanSnippet, cleanTitle } from '../../../utils/exportDocument';
 
 // Helper Klasifikasi Status Antrean Pedagogis
 export function getDocQueueCategory(d: Dokumen): 'terkumpul' | 'revisi' | 'selesai' | 'draf' {
@@ -505,7 +505,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
             <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
               {selectedDoc ? (
                 <>
-                  Naskah: <strong>{selectedDoc.judul}</strong> oleh {selectedDoc.nama}
+                  Naskah: <strong>{cleanTitle(selectedDoc.judul)}</strong> oleh {selectedDoc.nama}
                   {selectedDoc.kolaborator && selectedDoc.kolaborator.length > 0 && (
                     <> & {selectedDoc.kolaborator.map((k) => k.nama).join(', ')}</>
                   )}
@@ -789,7 +789,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                           <span className={`text-[11px] font-serif-literary truncate italic flex-1 ${
                             isSelected ? 'text-stone-300 dark:text-stone-700' : 'text-stone-500 dark:text-stone-400'
                           }`}>
-                            &quot;{doc.judul || 'Tanpa Judul'}&quot;
+                            &quot;{cleanTitle(doc.judul)}&quot;
                           </span>
                         </div>
 
@@ -854,7 +854,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                                 <span className={`text-[11px] font-serif-literary truncate italic flex-1 ${
                                   isThisDocSelected ? 'text-white dark:text-amber-400 font-medium' : 'text-stone-700 dark:text-stone-300'
                                 }`}>
-                                  &quot;{doc.judul || 'Tanpa Judul'}&quot;
+                                  &quot;{cleanTitle(doc.judul)}&quot;
                                 </span>
                                 <span className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                                   isThisDocSelected
@@ -966,7 +966,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
                   </div>
 
                   <h1 className="text-xl sm:text-2xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 leading-snug mb-1">
-                    {selectedDoc.judul || 'Tanpa Judul'}
+                    {cleanTitle(selectedDoc.judul)}
                   </h1>
                   <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2">
                     <span>
@@ -1417,7 +1417,7 @@ export const TabKoreksiTugas: React.FC<TabKoreksiTugasProps> = ({
               </button>
               <div className="border-l border-stone-200 dark:border-stone-800 pl-3 min-w-0">
                 <h3 className="text-sm font-bold font-serif-literary text-stone-900 dark:text-stone-100 truncate">
-                  {selectedDoc.judul}
+                  {cleanTitle(selectedDoc.judul)}
                 </h3>
                 <div className="text-xs text-stone-500 dark:text-stone-400 truncate">
                   Penulis: <strong className="text-stone-800 dark:text-stone-200">{selectedDoc.nama}</strong> (@{selectedDoc.username || '-'})

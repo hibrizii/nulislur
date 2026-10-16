@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DataService, getWarnaTopik, stringToColor, getWaktuSekarang } from '../../services/dataService';
-import type { Dokumen, Pengumuman, UserAccount, Penugasan, MigrasiRedeemItem, KolaboratorAnggota } from '../../types';
+import type { Dokumen, Pengumuman, UserAccount, Penugasan, MigrasiRedeemItem, KolaboratorAnggota, KelasRoom } from '../../types';
 import { 
   Plus, 
   LogOut, 
@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { NeoModal } from '../Common/NeoModal';
 import { ThemeToggle } from '../Common/ThemeToggle';
-import { cleanSnippet } from '../../utils/exportDocument';
+import { cleanSnippet, cleanTitle } from '../../utils/exportDocument';
 import { StudentGrowthReport } from './StudentGrowthReport';
 import { LinimasaCuitan } from '../Cuitan/LinimasaCuitan';
 import { KelolaKolaboratorModal } from './KelolaKolaboratorModal';
@@ -147,7 +147,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'publish' as const,
         label: 'Terpublikasi',
-        badgeClass: 'bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] border-[#D4E2EE] dark:border-[#283C4E]',
+        badgeClass: 'bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] shadow-2xs',
         icon: Globe,
         needsRevision: false,
         totalNotes: 0,
@@ -157,7 +157,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'selesai' as const,
         label: 'Selesai',
-        badgeClass: 'bg-[#EAF3EC] dark:bg-[#1E2B22] text-[#2D5A37] dark:text-[#A7D1AF] border-[#D1E6D5] dark:border-[#2C4032]',
+        badgeClass: 'bg-[#EAF3EC] dark:bg-[#1E2B22] text-[#2D5A37] dark:text-[#A7D1AF] shadow-2xs',
         icon: CheckCircle,
         needsRevision: false,
         totalNotes: 0,
@@ -169,7 +169,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'revisi' as const,
         label: uncheckedCount > 0 ? `Perlu Revisi (${uncheckedCount})` : 'Perlu Revisi',
-        badgeClass: 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] border-[#F2D7D0] dark:border-[#422924] font-medium',
+        badgeClass: 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] font-medium shadow-2xs',
         icon: AlertCircle,
         needsRevision: true,
         totalNotes: uncheckedCount,
@@ -180,7 +180,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       return {
         type: 'terkumpul' as const,
         label: 'Menunggu Koreksi',
-        badgeClass: 'bg-[#FAF4EB] dark:bg-[#282117] text-[#785429] dark:text-[#E2C7A7] border-[#EEDFCD] dark:border-[#3D3224]',
+        badgeClass: 'bg-[#FAF4EB] dark:bg-[#282117] text-[#785429] dark:text-[#E2C7A7] shadow-2xs',
         icon: Clock,
         needsRevision: false,
         totalNotes: 0,
@@ -190,7 +190,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     return {
       type: 'draf' as const,
       label: 'Draf Saya',
-      badgeClass: 'bg-[#F4F3EF] dark:bg-[#222126] text-[#5C5751] dark:text-[#B5B0A8] border-[#E5E2DA] dark:border-[#33313B]',
+      badgeClass: 'bg-[#F4F3EF] dark:bg-[#222126] text-[#5C5751] dark:text-[#B5B0A8] shadow-2xs',
       icon: FileText,
       needsRevision: false,
       totalNotes: 0,
@@ -258,6 +258,36 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
     }, kodeKelas);
     return () => unsub();
   }, [kodeKelas]);
+
+  // State Kelas untuk resolusi nama kelas yang ramah (human-readable)
+  const [kelasList, setKelasList] = useState<KelasRoom[]>([]);
+
+  useEffect(() => {
+    const unsub = DataService.listenKelas((list) => {
+      setKelasList(list);
+    });
+    return () => unsub();
+  }, []);
+
+  const resolveNamaKelas = useCallback((targetKodeKelas?: string | null, tugasId?: string | null) => {
+    if (!targetKodeKelas || targetKodeKelas === 'Semua' || targetKodeKelas === 'Umum') {
+      return 'Semua Kelas';
+    }
+    const found = kelasList.find(
+      (k) => (k.kodeKelas || '').trim().toLowerCase() === targetKodeKelas.trim().toLowerCase()
+    );
+    if (found && found.namaKelas) {
+      return found.namaKelas;
+    }
+    if (tugasId) {
+      const tugas = penugasanList.find((t) => String(t.id) === String(tugasId));
+      if (tugas?.namaKelas) return tugas.namaKelas;
+    }
+    if (kodeKelas && targetKodeKelas.trim().toLowerCase() === kodeKelas.trim().toLowerCase() && namaKelas) {
+      return namaKelas;
+    }
+    return targetKodeKelas;
+  }, [kelasList, penugasanList, kodeKelas, namaKelas]);
 
   useEffect(() => {
     if (isNewDocOpen && kodeKelas) {
@@ -592,7 +622,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-8 w-full flex flex-col min-h-screen">
       {/* Header Siswa */}
-      <header className="editorial-card p-6 sm:p-8 bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 mb-8 flex flex-wrap items-center justify-between gap-4">
+      <header className="editorial-card p-6 sm:p-8 bg-white dark:bg-[#141416] mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300">
@@ -617,7 +647,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   naskahList: (claimedRedeemInfo.naskahList as any) || [],
                 });
               }}
-              className="editorial-btn bg-[#EAF3EC] hover:bg-[#DDECE0] text-[#2D5A37] border border-[#D1E6D5] dark:bg-[#1E2B22] dark:text-[#A7D1AF] dark:border-[#2C4032] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              className="editorial-btn bg-[#EAF3EC] hover:bg-[#DDECE0] text-[#2D5A37] dark:bg-[#1E2B22] dark:text-[#A7D1AF] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1.5 transition-colors"
               title={`Karya arsip sudah diklaim (${claimedRedeemInfo.kodeRedeem}). Klik untuk melihat arsip.`}
             >
               <CheckCircle2 size={14} className="text-[#2D5A37] dark:text-[#A7D1AF]" />
@@ -630,7 +660,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                 setIsRedeemModalOpen(true);
                 setRedeemFeedback(null);
               }}
-              className="editorial-btn bg-[#FAF4EB] hover:bg-[#F2E8D8] text-[#785429] border border-[#EEDFCD] dark:bg-[#282117] dark:text-[#E2C7A7] dark:border-[#3D3224] dark:hover:bg-[#322A1E] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              className="editorial-btn bg-[#FAF4EB] hover:bg-[#F2E8D8] text-[#785429] dark:bg-[#282117] dark:text-[#E2C7A7] dark:hover:bg-[#322A1E] px-3 sm:px-3.5 py-2 text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1.5 transition-colors"
               title="Klaim naskah tulisan dari semester/aplikasi sebelumnya"
             >
               <KeyRound size={14} className="text-[#785429] dark:text-[#E2C7A7]" />
@@ -641,7 +671,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
           <button
             onClick={() => setIsNewDocOpen(true)}
-            className="editorial-btn bg-[#2D2926] hover:bg-[#1C1917] text-white dark:bg-[#EAE6E1] dark:hover:bg-white dark:text-[#1C1917] dark:border dark:border-[#D6D0C7] px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1.5 transition-all"
+            className="editorial-btn bg-[#2D2926] hover:bg-[#1C1917] text-white dark:bg-[#EAE6E1] dark:hover:bg-white dark:text-[#1C1917] px-3.5 sm:px-4 py-2 text-xs font-bold cursor-pointer shadow-xs flex items-center gap-1.5 transition-all"
             title="Buat Naskah Tulisan Baru"
           >
             <Plus size={15} />
@@ -660,7 +690,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
               setAccountNotice(null);
               setIsAccountModalOpen(true);
             }}
-            className="w-9 h-9 rounded-xl flex items-center justify-center bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700 border border-stone-200/70 dark:border-stone-700/70 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+            className="w-9 h-9 rounded-xl flex items-center justify-center bg-stone-100 hover:bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0"
             title="Pengaturan Akun Saya (Ubah ID & Kata Sandi)"
             aria-label="Pengaturan Akun Saya"
           >
@@ -669,7 +699,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
           <button
             onClick={onLogout}
-            className="w-9 h-9 rounded-xl flex items-center justify-center bg-stone-100 hover:bg-red-50 text-stone-700 hover:text-red-700 hover:border-red-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-red-950/40 dark:hover:text-red-400 dark:hover:border-red-900/60 border border-stone-200/70 dark:border-stone-700/70 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+            className="w-9 h-9 rounded-xl flex items-center justify-center bg-stone-100 hover:bg-red-50 text-stone-700 hover:text-red-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-red-950/40 dark:hover:text-red-400 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0"
             title="Keluar dari Akun"
             aria-label="Keluar"
           >
@@ -736,7 +766,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   value={taskSearchQuery}
                   onChange={(e) => setTaskSearchQuery(e.target.value)}
                   placeholder="Cari judul tugas naskah..."
-                  className="editorial-input w-full pl-8.5 pr-8 py-2 text-xs bg-white dark:bg-[#141416] text-stone-900 dark:text-stone-100 border border-stone-200/80 dark:border-stone-800 rounded-xl"
+                  className="editorial-input w-full pl-8.5 pr-8 py-2 text-xs bg-white dark:bg-[#141416] text-stone-900 dark:text-stone-100 rounded-xl shadow-2xs border-stone-200/50 dark:border-stone-800/60"
                 />
                 {taskSearchQuery && (
                   <button
@@ -762,14 +792,14 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setTaskFilterStatus(tab.id as any)}
-                    className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
                       taskFilterStatus === tab.id
                         ? tab.alert
-                          ? 'bg-[#874538] text-white border-[#874538] dark:bg-[#A35647] dark:border-[#A35647] shadow-2xs'
-                          : 'bg-stone-900 text-white border-stone-900 dark:bg-stone-800 dark:text-stone-100 dark:border-stone-700 shadow-2xs'
+                          ? 'bg-[#874538] text-white dark:bg-[#A35647]'
+                          : 'bg-stone-900 text-white dark:bg-stone-800 dark:text-stone-100'
                         : tab.alert
-                        ? 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] border-[#F2D6CF] dark:border-[#4A2E28] hover:bg-[#F5E6E1]'
-                        : 'bg-white dark:bg-[#141416] text-stone-600 dark:text-stone-400 border-stone-200/80 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800/80'
+                        ? 'bg-[#FAF0ED] dark:bg-[#2B1B18] text-[#874538] dark:text-[#E4A599] hover:bg-[#F5E6E1]'
+                        : 'bg-white dark:bg-[#141416] text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80'
                     }`}
                   >
                     <span>{tab.label}</span>
@@ -847,41 +877,41 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                     <div
                       key={doc.id}
                       onClick={() => onOpenEditor(doc.id)}
-                      className={`editorial-card p-5 bg-white dark:bg-[#141416] cursor-pointer flex flex-col justify-between transition-all hover:shadow-sm ${
+                      className={`editorial-card p-5 bg-white dark:bg-[#141416] cursor-pointer flex flex-col justify-between transition-all hover:shadow-md ${
                         info.needsRevision
-                          ? 'border-[#E5B5AA] dark:border-[#5C2B22] ring-1 ring-[#E5B5AA]/30'
-                          : 'border-stone-200/80 dark:border-stone-800'
+                          ? 'ring-1 ring-[#E5B5AA]/60 dark:ring-[#5C2B22]/60 shadow-xs'
+                          : ''
                       }`}
                     >
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span
-                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 ${info.badgeClass}`}
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 ${info.badgeClass}`}
                             >
                               <StatusIcon size={11} /> {info.label}
                             </span>
                             {doc.judulTugas && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] border border-[#D4E2EE] dark:border-[#283C4E] flex items-center gap-1">
-                                <BookOpen size={10} /> {doc.judulTugas}
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#EEF3F8] dark:bg-[#1A2530] text-[#365778] dark:text-[#A4C2E0] shadow-2xs flex items-center gap-1">
+                                <BookOpen size={10} /> {cleanTitle(doc.judulTugas)}
                               </span>
                             )}
                             {isCollabDoc && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F3EFF8] dark:bg-[#251E2E] text-[#594673] dark:text-[#CBBDE2] border border-[#DFD3ED] dark:border-[#3E2E4E] flex items-center gap-1">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F3EFF8] dark:bg-[#251E2E] text-[#594673] dark:text-[#CBBDE2] shadow-2xs flex items-center gap-1">
                                 <Users size={10} /> Kolaborasi ({(doc.kolaborator?.length || 0) + 1})
                               </span>
                             )}
                           </div>
 
                           {doc.pelanggaran > 0 && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FDF1F1] dark:bg-[#2A1818] text-[#8C3E3E] dark:text-[#E49D9D] border border-[#F5D5D5] dark:border-[#4B2525] flex items-center gap-1">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FDF1F1] dark:bg-[#2A1818] text-[#8C3E3E] dark:text-[#E49D9D] shadow-2xs flex items-center gap-1">
                               <AlertCircle size={11} /> {doc.pelanggaran}x
                             </span>
                           )}
                         </div>
 
                         <h4 className="font-serif-literary font-bold text-base text-stone-900 dark:text-stone-100 line-clamp-2 mb-1 group-hover:text-[#365778] dark:group-hover:text-[#A4C2E0] transition-colors">
-                          {doc.judul || 'Tanpa Judul'}
+                          {cleanTitle(doc.judul)}
                         </h4>
 
                         {/* Info Tim Kolaborasi */}
@@ -905,7 +935,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         )}
 
                         {info.needsRevision && (
-                          <div className="mt-1 mb-2.5 px-2.5 py-1.5 rounded-lg bg-[#FAF0ED] dark:bg-[#2B1B18] border border-[#F2D6CF] dark:border-[#4A2E28] text-[11px] text-[#874538] dark:text-[#E4A599] flex items-center gap-1.5">
+                          <div className="mt-1 mb-2.5 px-2.5 py-1.5 rounded-lg bg-[#FAF0ED] dark:bg-[#2B1B18] text-[11px] text-[#874538] dark:text-[#E4A599] flex items-center gap-1.5 shadow-2xs">
                             <Sparkles size={12} className="text-[#A35647] dark:text-[#E4A599] shrink-0" />
                             <span className="truncate">Ada catatan koreksi dari guru ({info.totalNotes})</span>
                           </div>
@@ -971,9 +1001,6 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   <Megaphone size={16} className="text-[#8F6533] dark:text-[#D9B27F]" /> 
                   <span>Woro-woro</span>
                 </h3>
-                <span className="text-[10px] font-medium text-stone-400 dark:text-stone-500 font-mono">
-                  Siaran Kelas
-                </span>
               </div>
 
               <div className="max-h-72 overflow-y-auto pr-1 flex flex-col gap-3 custom-scrollbar">
@@ -985,15 +1012,15 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                   filteredPengumumanList.map((p) => (
                     <div
                       key={p.id}
-                      className={`p-3.5 rounded-xl text-xs font-medium border transition-all duration-200 ${
+                      className={`p-3.5 rounded-xl text-xs font-medium transition-all duration-200 ${
                         p.tugasId
-                          ? 'bg-[#FAF4EB] dark:bg-[#221A12] border-[#ECDDC8] dark:border-[#3D3021] text-stone-800 dark:text-stone-200 shadow-2xs'
-                          : 'bg-[#FAF9F5] dark:bg-[#18181B] border-[#E8E4DA] dark:border-[#28272C] text-stone-800 dark:text-stone-200'
+                          ? 'bg-[#FAF4EB] dark:bg-[#221A12] text-stone-800 dark:text-stone-200 shadow-2xs'
+                          : 'bg-[#FAF9F5] dark:bg-[#18181B] text-stone-800 dark:text-stone-200 shadow-2xs'
                       }`}
                     >
                       {p.tugasId ? (
-                        <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#ECDDC8]/70 dark:border-[#3D3021]">
-                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#7A5425] dark:text-[#E8CFB0] bg-[#F1E5D3] dark:bg-[#342717] px-2 py-0.5 rounded-md border border-[#E2D2B8] dark:border-[#4B3A26]">
+                        <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#ECDDC8]/60 dark:border-[#3D3021]/60">
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#7A5425] dark:text-[#E8CFB0] bg-[#F1E5D3] dark:bg-[#342717] px-2 py-0.5 rounded-md">
                             <BookOpen size={10} className="text-[#8F6533] dark:text-[#D9B27F]" /> Penugasan Guru
                           </span>
                           <button
@@ -1012,7 +1039,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         </div>
                       ) : (
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#5C5952] dark:text-[#B8B5AD] bg-[#F1EFEA] dark:bg-[#252528] px-2 py-0.5 rounded-md border border-[#DFDBD0] dark:border-[#36353B]">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#5C5952] dark:text-[#B8B5AD] bg-[#F1EFEA] dark:bg-[#252528] px-2 py-0.5 rounded-md">
                             Informasi
                           </span>
                         </div>
@@ -1027,8 +1054,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                           <Clock size={11} className="opacity-70" /> {p.waktu}
                         </span>
                         {p.kodeKelas && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400">
-                            {p.kodeKelas === 'Semua' ? 'Semua Kelas' : p.kodeKelas}
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 shadow-2xs">
+                            {resolveNamaKelas(p.kodeKelas, p.tugasId)}
                           </span>
                         )}
                       </div>
@@ -1039,8 +1066,8 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
             </div>
 
             {/* Kutipan Sastra / Quotes Inspiratif */}
-            <div className="editorial-card p-4.5 bg-[#FAF9F6] dark:bg-[#161618] text-stone-800 dark:text-stone-200 border border-[#E9E5DB] dark:border-[#28272C] relative overflow-hidden shadow-2xs">
-              <blockquote className="font-serif-literary text-xs sm:text-[13px] leading-relaxed text-stone-700 dark:text-stone-300 italic mb-2 relative z-10 pl-3.5 border-l-3 border-[#C9A874] dark:border-[#8E744A]">
+            <div className="editorial-card p-4.5 bg-[#FAF9F6] dark:bg-[#161618] text-stone-800 dark:text-stone-200 relative overflow-hidden shadow-2xs">
+              <blockquote className="font-serif-literary text-xs sm:text-[13px] leading-relaxed text-stone-700 dark:text-stone-300 italic mb-2 relative z-10 pl-3.5 border-l-2 border-[#C9A874] dark:border-[#8E744A]">
                 “{quoteHarian.teks}”
               </blockquote>
               <div className="text-right text-[11px] font-semibold text-stone-500 dark:text-stone-400 font-serif-literary">
@@ -1196,7 +1223,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                     </div>
 
                     <h4 className="text-xl font-bold font-serif-literary text-stone-900 dark:text-stone-100 mb-2 hover:text-blue-700 dark:hover:text-blue-400 transition-colors">
-                      {doc.judul}
+                      {cleanTitle(doc.judul)}
                     </h4>
 
                     <p className="font-serif-literary text-sm text-stone-600 dark:text-stone-300 line-clamp-3 mb-4 leading-relaxed">
@@ -1230,8 +1257,9 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
 
       {/* Modal Buat Tulisan Baru */}
       {isNewDocOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="editorial-card w-full max-w-md my-auto max-h-[88vh] overflow-y-auto bg-white dark:bg-[#141416] border border-stone-200/80 dark:border-stone-800 p-5 sm:p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[10000] overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="min-h-full flex items-center justify-center py-6">
+            <div className="editorial-card w-full max-w-md bg-white dark:bg-[#141416] p-5 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-stone-100 dark:border-stone-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center shrink-0">
@@ -1496,6 +1524,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
             </form>
           </div>
         </div>
+      </div>
       )}
 
       {/* Modal Hapus Draf */}
@@ -1617,7 +1646,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             <div className="flex items-center gap-2 truncate pr-2">
                               <FileText size={14} className="text-stone-400 shrink-0" />
                               <span className="font-serif-literary font-semibold text-stone-800 dark:text-stone-200 truncate">
-                                {doc.judul || 'Tanpa Judul'}
+                                {cleanTitle(doc.judul)}
                               </span>
                             </div>
                             <span
@@ -1747,7 +1776,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             <div className="flex items-center gap-2 truncate pr-2">
                               <FileText size={14} className="text-stone-400 shrink-0" />
                               <span className="font-serif-literary font-semibold text-stone-800 dark:text-stone-200 truncate">
-                                {doc.judul || 'Tanpa Judul'}
+                                {cleanTitle(doc.judul)}
                               </span>
                             </div>
                             <span

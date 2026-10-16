@@ -92,7 +92,7 @@ export const FormattedWoroText: React.FC<FormattedWoroTextProps> = ({ text, clas
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 my-0.5 rounded-lg text-[11px] font-semibold bg-[#EEF3F8] hover:bg-[#E1EAF3] text-[#2C5270] dark:bg-[#1A2530] dark:hover:bg-[#223344] dark:text-[#A4C2E0] border border-[#D4E2EE] dark:border-[#283C4E] shadow-2xs transition-all duration-150 cursor-pointer no-underline group hover:scale-[1.01] active:scale-[0.99]"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 my-0.5 rounded-lg text-[11px] font-semibold bg-[#EEF3F8] hover:bg-[#E1EAF3] text-[#2C5270] dark:bg-[#1A2530] dark:hover:bg-[#223344] dark:text-[#A4C2E0] shadow-2xs transition-all duration-150 cursor-pointer no-underline group hover:scale-[1.01] active:scale-[0.99]"
               title={`Buka tautan: ${cleanUrl}`}
             >
               {isDoc ? (

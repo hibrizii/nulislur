@@ -11,6 +11,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { parseDocumentTagCounts, hitungPenilaianOtomatis } from '../../services/dataService';
+import { cleanTitle } from '../../utils/exportDocument';
 
 interface StudentGrowthReportProps {
   dokumenList: Dokumen[];
@@ -456,7 +457,7 @@ export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokume
                   </div>
 
                   <h5 className="font-bold text-sm text-stone-900 dark:text-stone-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1 mb-1">
-                    {doc.judul}
+                    {cleanTitle(doc.judul)}
                   </h5>
 
                   <p className="text-[11px] text-stone-400 dark:text-stone-500 mb-3 line-clamp-2 italic">
@@ -492,7 +493,7 @@ export const StudentGrowthReport: React.FC<StudentGrowthReportProps> = ({ dokume
                   Rapor Penilaian Tugas
                 </span>
                 <h3 className="font-bold font-serif-literary text-lg text-stone-900 dark:text-stone-100">
-                  {selectedDocModal.judul}
+                  {cleanTitle(selectedDocModal.judul)}
                 </h3>
               </div>
               <button
