@@ -521,6 +521,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
       alert('Judul tidak boleh kosong!');
       return;
     }
+    if (isCollabMode && selectedCollabs.length === 0) {
+      alert('Kamu memilih mode Kolaborasi, silakan pilih minimal 1 teman kolaborator di daftar teman sekelas di bawah. Atau pilih mode Mandiri jika ingin menulis sendiri.');
+      return;
+    }
     try {
       const activeTask = penugasanList.find((p) => p.id === selectedTugasId);
       const docId = await DataService.buatDokumenBaru(
@@ -969,14 +973,25 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                         </span>
 
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {isCollabDoc && (
+                          {doc.status === 'Draf' && isPembuat && (
                             <button
                               type="button"
                               onClick={() => setManagingCollabDoc(doc)}
                               className="editorial-btn bg-stone-100 hover:bg-[#F3EFF8] text-stone-600 hover:text-[#594673] dark:bg-stone-800 dark:hover:bg-[#251E2E] dark:text-stone-300 dark:hover:text-[#CBBDE2] text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                               title="Kelola Kolaborator"
                             >
-                              <Users size={12} /> Kolaborator ({(doc.kolaborator?.length || 0) + 1})
+                              <Users size={12} /> {isCollabDoc ? `Kolaborator (${(doc.kolaborator?.length || 0) + 1})` : '+ Ajak Kolab'}
+                            </button>
+                          )}
+
+                          {!isPembuat && isCollabDoc && (
+                            <button
+                              type="button"
+                              onClick={() => setManagingCollabDoc(doc)}
+                              className="editorial-btn bg-stone-100 hover:bg-[#F3EFF8] text-stone-600 hover:text-[#594673] dark:bg-stone-800 dark:hover:bg-[#251E2E] dark:text-stone-300 dark:hover:text-[#CBBDE2] text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Lihat Tim Kolaborator"
+                            >
+                              <Users size={12} /> Tim ({(doc.kolaborator?.length || 0) + 1})
                             </button>
                           )}
 
@@ -1482,7 +1497,19 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                           .map((cm) => (
                             <div
                               key={cm.username}
-                              className="p-1.5 rounded-lg bg-white/80 dark:bg-stone-900/80 hover:bg-white dark:hover:bg-stone-850 border border-stone-200/60 dark:border-stone-800 flex items-center justify-between transition-colors text-[11px]"
+                              onClick={() => {
+                                if (selectedCollabs.length >= 3) return;
+                                setSelectedCollabs((prev) => [
+                                  ...prev,
+                                  {
+                                    username: cm.username,
+                                    nama: cm.nama,
+                                    warna: stringToColor(cm.username),
+                                    waktuDitambahkan: getWaktuSekarang(),
+                                  },
+                                ]);
+                              }}
+                              className="p-1.5 rounded-lg bg-white/80 dark:bg-stone-900/80 hover:bg-purple-50 dark:hover:bg-purple-950/40 border border-stone-200/60 dark:border-stone-800 flex items-center justify-between transition-colors text-[11px] cursor-pointer"
                             >
                               <div className="flex items-center gap-2">
                                 <div
@@ -1495,19 +1522,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (selectedCollabs.length >= 3) return;
-                                  setSelectedCollabs((prev) => [
-                                    ...prev,
-                                    {
-                                      username: cm.username,
-                                      nama: cm.nama,
-                                      warna: stringToColor(cm.username),
-                                      waktuDitambahkan: getWaktuSekarang(),
-                                    },
-                                  ]);
-                                }}
-                                className="editorial-btn bg-purple-100 hover:bg-purple-600 hover:text-white dark:bg-purple-950/60 dark:hover:bg-purple-600 text-purple-900 dark:text-purple-200 text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                                className="editorial-btn bg-purple-100 hover:bg-purple-600 hover:text-white dark:bg-purple-950/60 dark:hover:bg-purple-600 text-purple-900 dark:text-purple-200 text-[10px] px-2 py-0.5 rounded cursor-pointer pointer-events-none"
                               >
                                 + Pilih
                               </button>
@@ -1558,8 +1573,10 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
         confirmColor="#DC2626"
         onConfirm={async () => {
           if (deleteDocId) {
-            await DataService.hapusDokumen(deleteDocId);
+            const targetId = deleteDocId;
             setDeleteDocId(null);
+            setDokumenList((prev) => prev.filter((d) => d.id !== targetId));
+            await DataService.hapusDokumen(targetId);
           }
         }}
         onCancel={() => setDeleteDocId(null)}

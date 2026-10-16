@@ -2690,16 +2690,32 @@ export const DataService = {
   },
 
   async hapusDokumen(id: string) {
+    if (!id) return;
+
+    // 1. Bersihkan dari local storage seketika (0ms)
+    try {
+      const local = getLocalDB();
+      if (local && local.dokumen) {
+        delete local.dokumen[id];
+        if (local.likes) delete local.likes[id];
+        if (local.komentar) delete local.komentar[id];
+        saveLocalDB(local);
+      }
+    } catch {}
+
+    // 2. Hapus dari Supabase jika online
     if (isSupabaseConfigured) {
-      await supabase.from('dokumen').delete().eq('id', id);
-      return;
+      try {
+        await supabase.from('dokumen').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Gagal hapus dokumen dari Supabase:', e);
+      }
     }
 
-    const local = getLocalDB();
-    delete local.dokumen[id];
-    delete local.likes[id];
-    delete local.komentar[id];
-    saveLocalDB(local);
+    // 3. Dispatch event agar seluruh listener me-refresh tampilan seketika
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('nulislur_db_change'));
+    }
   },
 
   // 6. Interaksi Ruang Publik
@@ -3346,12 +3362,12 @@ export const DataService = {
               .contains('kolaborator', JSON.stringify([{ username }])),
           ]);
 
-          let hasChanges = false;
+          const freshServerDocs: Record<string, Dokumen> = {};
+
           if (!ownRes.error && ownRes.data) {
             ownRes.data.forEach((row) => {
               const doc = mapDokumenRow(row);
-              docCache[doc.id] = doc;
-              hasChanges = true;
+              freshServerDocs[doc.id] = doc;
             });
           }
 
@@ -3361,8 +3377,7 @@ export const DataService = {
               const doc = mapDokumenRow(row);
               const isCollab = checkIsCollab(doc) || doc.username === username;
               if (isCollab) {
-                docCache[doc.id] = doc;
-                hasChanges = true;
+                freshServerDocs[doc.id] = doc;
               }
             });
           };
@@ -3374,20 +3389,33 @@ export const DataService = {
             processCollabRows(jsonbRes.data);
           }
 
-          // Sinkronkan ke local DB agar offline & re-render instan
+          // Sinkronkan docCache secara bersih: hapus dokumen yang sudah tidak ada di server
+          for (const key of Object.keys(docCache)) {
+            delete docCache[key];
+          }
+          Object.assign(docCache, freshServerDocs);
+
+          // Bersihkan local storage agar naskah yang dihapus tidak menjadi zombie
           try {
             const freshLocal = getLocalDB();
             if (freshLocal?.dokumen) {
-              Object.values(docCache).forEach((d) => {
+              // Hapus dokumen lama milik siswa ini yang sudah dihapus di server
+              Object.keys(freshLocal.dokumen).forEach((id) => {
+                const d = freshLocal.dokumen[id];
+                const isRelevant = d.username === username || checkIsCollab(d);
+                if (isRelevant && !freshServerDocs[id]) {
+                  delete freshLocal.dokumen[id];
+                }
+              });
+              // Simpan dokumen server yang aktif
+              Object.values(freshServerDocs).forEach((d) => {
                 freshLocal.dokumen[d.id] = d;
               });
               saveLocalDB(freshLocal);
             }
           } catch {}
 
-          if (hasChanges) {
-            callback({ ...docCache });
-          }
+          callback({ ...docCache });
         } catch (err) {
           console.warn('Gagal memuat dokumen siswa dari Supabase:', err);
         }
@@ -3419,6 +3447,13 @@ export const DataService = {
               const oldId = (p.old as any).id;
               if (oldId) {
                 delete docCache[oldId];
+                try {
+                  const freshLocal = getLocalDB();
+                  if (freshLocal?.dokumen && freshLocal.dokumen[oldId]) {
+                    delete freshLocal.dokumen[oldId];
+                    saveLocalDB(freshLocal);
+                  }
+                } catch {}
                 callback({ ...docCache });
               }
             }
@@ -3444,12 +3479,26 @@ export const DataService = {
               } else if (docCache[doc.id] && doc.username !== username) {
                 // Siswa dikeluarkan dari tim kolaborasi naskah
                 delete docCache[doc.id];
+                try {
+                  const freshLocal = getLocalDB();
+                  if (freshLocal?.dokumen && freshLocal.dokumen[doc.id]) {
+                    delete freshLocal.dokumen[doc.id];
+                    saveLocalDB(freshLocal);
+                  }
+                } catch {}
                 callback({ ...docCache });
               }
             } else if (p.eventType === 'DELETE' && p.old) {
               const oldId = (p.old as any).id;
               if (oldId && docCache[oldId]) {
                 delete docCache[oldId];
+                try {
+                  const freshLocal = getLocalDB();
+                  if (freshLocal?.dokumen && freshLocal.dokumen[oldId]) {
+                    delete freshLocal.dokumen[oldId];
+                    saveLocalDB(freshLocal);
+                  }
+                } catch {}
                 callback({ ...docCache });
               }
             }
