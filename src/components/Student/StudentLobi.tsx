@@ -917,7 +917,7 @@ export const StudentLobi: React.FC<StudentLobiProps> = ({
                             )}
                             {isCollabDoc && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F3EFF8] dark:bg-[#251E2E] text-[#594673] dark:text-[#CBBDE2] shadow-2xs flex items-center gap-1">
-                                <Users size={10} /> {isPembuat ? `Kolaborasi (${(doc.kolaborator?.length || 0) + 1})` : `Diajak Kolab oleh ${doc.nama}`}
+                                <Users size={10} /> Kolaborasi ({(doc.kolaborator?.length || 0) + 1})
                               </span>
                             )}
                           </div>
