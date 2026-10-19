@@ -34,7 +34,8 @@ export async function initCollabSession(
   callbacks?: {
     onPeersChange?: (peers: CollabPeer[]) => void;
     onTitleChange?: (newTitle: string) => void;
-  }
+  },
+  _initialHtml?: string
 ): Promise<CollabSession> {
   const ydoc = new Y.Doc();
   const awareness = new Awareness(ydoc);
@@ -74,11 +75,14 @@ export async function initCollabSession(
 
   let channel: any = null;
   let isChannelSubscribed = false;
+  let isDestroyed = false;
+  let heartbeatTimer: any = null;
+  let reconnectTimer: any = null;
   const pendingBroadcasts: Array<{ type: string; event: string; payload: any }> = [];
 
   const sendBroadcast = (event: string, payload: any) => {
     // A. Kirim via Supabase Broadcast (antar device / browser berbeda)
-    if (channel) {
+    if (channel && !isDestroyed) {
       if (isChannelSubscribed) {
         channel.send({
           type: 'broadcast',
@@ -86,12 +90,14 @@ export async function initCollabSession(
           payload,
         }).catch(() => {});
       } else {
-        pendingBroadcasts.push({ type: 'broadcast', event, payload });
+        if (pendingBroadcasts.length < 50) {
+          pendingBroadcasts.push({ type: 'broadcast', event, payload });
+        }
       }
     }
 
     // B. Kirim via Local BroadcastChannel (antar tab di browser yang sama - seketika 0ms)
-    if (localBc) {
+    if (localBc && !isDestroyed) {
       try {
         localBc.postMessage({
           type: event,
@@ -265,6 +271,17 @@ export async function initCollabSession(
 
   // 5. Inisialisasi Supabase Channel jika tersedia
   if (isSupabaseConfigured) {
+    // Bersihkan instance channel lama dengan nama yang sama jika ada sebelum membuat baru
+    try {
+      const existingChannels = (supabase as any).getChannels ? (supabase as any).getChannels() : [];
+      const oldChannel = existingChannels.find(
+        (ch: any) => ch.topic === `realtime:${channelName}` || ch.subTopic === channelName
+      );
+      if (oldChannel) {
+        supabase.removeChannel(oldChannel);
+      }
+    } catch {}
+
     channel = supabase.channel(channelName, {
       config: {
         presence: { key: user.username },
@@ -296,30 +313,77 @@ export async function initCollabSession(
       syncPeersList();
     });
 
-    channel.subscribe(async (status: string) => {
-      if (status === 'SUBSCRIBED') {
-        isChannelSubscribed = true;
-        try {
-          await channel.track({
-            username: user.username,
-            nama: user.nama,
-            warna: userColor,
-            terakhirAktif: Date.now(),
-          });
-        } catch {}
-
-        // Kirim antrean broadcast yang tertahan sebelum koneksi tersambung
-        while (pendingBroadcasts.length > 0) {
-          const item = pendingBroadcasts.shift();
-          if (item) {
-            channel.send(item).catch(() => {});
-          }
-        }
-
-        // Mulai jabat tangan sync dengan rekan online
-        sendInitialSyncRequest();
-      }
+    channel.on('presence', { event: 'join' }, () => {
+      syncPeersList();
+      // Rekan baru saja masuk: Segera kirim handshake sync agar rekan seketika mendapatkan update naskah
+      sendInitialSyncRequest();
     });
+
+    channel.on('presence', { event: 'leave' }, () => {
+      syncPeersList();
+    });
+
+    const subscribeChannel = () => {
+      if (isDestroyed || !channel) return;
+      channel.subscribe(async (status: string, err?: any) => {
+        if (isDestroyed) return;
+        if (status === 'SUBSCRIBED') {
+          isChannelSubscribed = true;
+          try {
+            await channel.track({
+              username: user.username,
+              nama: user.nama,
+              warna: userColor,
+              terakhirAktif: Date.now(),
+            });
+          } catch {}
+
+          // Kirim antrean broadcast yang tertahan sebelum koneksi tersambung
+          while (pendingBroadcasts.length > 0) {
+            const item = pendingBroadcasts.shift();
+            if (item) {
+              channel.send(item).catch(() => {});
+            }
+          }
+
+          // Mulai jabat tangan sync dengan rekan online
+          sendInitialSyncRequest();
+        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+          console.warn(`[Collab] Supabase channel status: ${status}. Mencoba reconnect...`, err);
+          isChannelSubscribed = false;
+          if (reconnectTimer) clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(() => {
+            if (!isDestroyed && channel) {
+              subscribeChannel();
+            }
+          }, 2000);
+        } else if (status === 'CLOSED') {
+          isChannelSubscribed = false;
+        }
+      });
+    };
+
+    subscribeChannel();
+
+    // Heartbeat berkala (12 detik) untuk menjaga koneksi WebSocket tetap hidup di jaringan sekolah
+    heartbeatTimer = setInterval(() => {
+      if (isDestroyed) return;
+      if (channel && isChannelSubscribed) {
+        channel.track({
+          username: user.username,
+          nama: user.nama,
+          warna: userColor,
+          terakhirAktif: Date.now(),
+        }).catch(() => {});
+
+        const selfAwareness = encodeAwarenessUpdate(awareness, [awareness.clientID]);
+        sendBroadcast('awareness_update', {
+          update: uint8ArrayToBase64(selfAwareness),
+          sender: user.username,
+          clientId: ydoc.clientID,
+        });
+      }
+    }, 12000);
   }
 
   // 6. Listener Local BroadcastChannel (Antar-tab browser yang sama)
@@ -360,6 +424,15 @@ export async function initCollabSession(
   };
 
   const destroy = () => {
+    isDestroyed = true;
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     try {
       awareness.destroy();
     } catch {}
@@ -370,11 +443,13 @@ export async function initCollabSession(
       try {
         supabase.removeChannel(channel);
       } catch {}
+      channel = null;
     }
     if (localBc) {
       try {
         localBc.close();
       } catch {}
+      localBc = null;
     }
     try {
       ydoc.destroy();

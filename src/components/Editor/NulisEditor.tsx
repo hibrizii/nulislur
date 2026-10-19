@@ -3836,11 +3836,11 @@ export const NulisEditor: React.FC<NulisEditorProps> = ({
     // Dilarang keras memanggil setContent saat collabSession aktif karena akan merusak DOM dan kursor!
     if (collabSession) return;
     if (initialContent === lastEmittedHtmlRef.current) return;
-    if (editor.isFocused) return;
+    const currentText = editor.state.doc.textContent.trim();
+    if (editor.isFocused && currentText.length > 0) return;
     const clean = sanitizeContent(initialContent);
 
     // Safety guard: Jangan pernah menimpa editor yang sudah terisi teks dengan konten kosong dari props!
-    const currentText = editor.state.doc.textContent.trim();
     const isIncomingBlank = !clean || clean === '<p></p>' || clean === '<p><br></p>';
     if (currentText.length > 10 && isIncomingBlank) {
       console.warn('[NulisEditor Guard] Menolak setContent kosong karena editor sudah memiliki teks.');

@@ -202,14 +202,15 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       // Cek pemulihan darurat jika teks di database kosong namun ada backup lokal
       let resolvedTeks = data.teks || '<p></p>';
       let resolvedJudul = data.judul || '';
-      const isDbEmpty = !data.teks || data.teks === '<p></p>' || data.teks === '<p><br></p>';
+      const isDbBasicallyEmpty = !data.teks || data.teks.replace(/<[^>]+>/g, '').trim().length < 2;
 
-      if (isDbEmpty && typeof window !== 'undefined') {
+      if (isDbBasicallyEmpty && typeof window !== 'undefined') {
         try {
           const rawBackup = localStorage.getItem(`nulislur_backup_${docId}`);
           if (rawBackup) {
             const parsed = JSON.parse(rawBackup);
-            if (parsed.teks && parsed.teks.length > 20 && parsed.teks !== '<p></p>') {
+            const backupClean = parsed.teks ? parsed.teks.replace(/<[^>]+>/g, '').trim() : '';
+            if (backupClean.length > 20) {
               console.info(`[NulisLur Disaster-Recovery] Memulihkan naskah dari snapshot lokal untuk dokumen ${docId}`);
               resolvedTeks = parsed.teks;
               if (parsed.judul && !data.judul) {
@@ -222,18 +223,25 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
         } catch {}
       }
 
-      // Jangan menimpa judul jika siswa sedang mengetik atau sedang dirty
-      const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
-      if (!isRecentlyEditingTitle && !isDirtyRef.current && resolvedJudul !== lastLocalJudulRef.current) {
-        setJudul(resolvedJudul);
+      // Inisialisasi awal judul atau update jika tidak sedang mengetik
+      if (!lastLocalJudulRef.current) {
         lastLocalJudulRef.current = resolvedJudul;
+        setJudul(resolvedJudul);
+      } else {
+        const isRecentlyEditingTitle = Date.now() - lastTitleEditTimeRef.current < 3000;
+        if (!isRecentlyEditingTitle && !isDirtyRef.current && resolvedJudul !== lastLocalJudulRef.current) {
+          setJudul(resolvedJudul);
+          lastLocalJudulRef.current = resolvedJudul;
+        }
       }
 
-      // Jangan menimpa teks jika siswa sedang mengetik atau sedang dirty.
-      // PENTING: Pada dokumen kolaborasi, teks disinkronkan langsung secara real-time via CRDT Yjs.
-      // Dilarang keras menimpa teks editor dari snapshot database agar kursor rekan tidak melompat!
+      // Inisialisasi teks naskah:
+      // PENTING: Pada initial load, teks lokal WAJIB diinisialisasi dari database baik untuk dokumen solo maupun kolaborasi!
       const isCollab = Boolean(data.isKolaboratif || (data.kolaborator && data.kolaborator.length > 0));
-      if (!isCollab) {
+      if (!lastLocalTeksRef.current) {
+        lastLocalTeksRef.current = resolvedTeks;
+        setTeks(resolvedTeks);
+      } else if (!isCollab) {
         const isRecentlyEditingTeks = Date.now() - lastEditTimeRef.current < 3000;
         if (!isRecentlyEditingTeks && !isDirtyRef.current && resolvedTeks !== lastLocalTeksRef.current) {
           setTeks(resolvedTeks);
@@ -311,7 +319,8 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
             lastLocalJudulRef.current = newTitle;
           }
         },
-      }
+      },
+      lastLocalTeksRef.current
     ).then((session) => {
       if (isSubscribed) {
         activeSession = session;
@@ -357,7 +366,8 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     titleTimerRef.current = setTimeout(async () => {
       const currentDoc = docRef.current;
       if (currentDoc && currentDoc.status === 'Draf') {
-        await DataService.simpanDokumen(docId, newTitle, lastLocalTeksRef.current);
+        const textToSave = lastLocalTeksRef.current || currentDoc.teks || '<p></p>';
+        await DataService.simpanDokumen(docId, newTitle, textToSave);
         setSaveStatus('saved');
         isDirtyRef.current = false;
       }
@@ -366,6 +376,15 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
 
   // Debounced editor content update
   const handleEditorUpdate = (html: string) => {
+    // Safety guard: Jika editor mendadak kosong padahal sebelumnya ada naskah panjang (race condition / remount)
+    const isIncomingBlank = !html || html.trim() === '' || html === '<p></p>' || html === '<p><br></p>';
+    const prevText = lastLocalTeksRef.current;
+    const prevHadContent = prevText && prevText.length > 20 && prevText !== '<p></p>' && prevText !== '<p><br></p>';
+    if (isIncomingBlank && prevHadContent) {
+      console.warn('[NulisLur Safety Guard] Mengabaikan event update kosong karena naskah lokal memiliki isi.');
+      return;
+    }
+
     isDirtyRef.current = true;
     lastLocalTeksRef.current = html;
     lastEditTimeRef.current = Date.now();
@@ -382,14 +401,16 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
       );
     }
 
-    // Simpan snapshot lokal darurat seketika (0ms delay)
-    try {
-      localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
-        judul: lastLocalJudulRef.current,
-        teks: html,
-        timestamp: Date.now()
-      }));
-    } catch {}
+    // Simpan snapshot lokal darurat seketika (0ms delay) - Hanya jika ada teks
+    if (!isIncomingBlank) {
+      try {
+        localStorage.setItem(`nulislur_backup_${docId}`, JSON.stringify({
+          judul: lastLocalJudulRef.current,
+          teks: html,
+          timestamp: Date.now()
+        }));
+      } catch {}
+    }
 
     // Rolling Version History: Simpan checkpoint setiap 3 menit atau jika delta kata >= 30 kata
     const clean = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -421,10 +442,19 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     saveTimerRef.current = setTimeout(async () => {
       const currentDoc = docRef.current;
       if (currentDoc && currentDoc.status === 'Draf') {
-        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, html);
+        const textToSave = lastLocalTeksRef.current || html;
+        const isBlank = !textToSave || textToSave === '<p></p>' || textToSave === '<p><br></p>';
+        const docHadContent = currentDoc.teks && currentDoc.teks.length > 20 && currentDoc.teks !== '<p></p>';
+
+        if (isBlank && docHadContent) {
+          console.warn('[NulisLur Safety Guard] Menolak auto-save teks kosong menimpa naskah di database.');
+          return;
+        }
+
+        await DataService.simpanDokumen(docId, lastLocalJudulRef.current, textToSave);
         if (collabSession) {
           const yjsState = collabSession.getYjsState();
-          await DataService.saveYjsDocState(docId, yjsState, true);
+          await DataService.saveYjsDocState(docId, yjsState, false);
         }
         setSaveStatus('saved');
         isDirtyRef.current = false;
@@ -444,12 +474,15 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
     }
 
     if (doc && doc.status === 'Draf' && isDirtyRef.current) {
-      const hasContent = lastLocalTeksRef.current && lastLocalTeksRef.current !== '<p></p>' && lastLocalTeksRef.current !== '<p><br></p>';
-      if (hasContent || doc.teks === '<p></p>' || doc.teks === '<p><br></p>') {
+      const textToSave = lastLocalTeksRef.current || doc.teks || '';
+      const hasContent = textToSave && textToSave !== '<p></p>' && textToSave !== '<p><br></p>';
+      const docHadContent = doc.teks && doc.teks.length > 20 && doc.teks !== '<p></p>';
+
+      if (hasContent || !docHadContent) {
         try {
-          await DataService.simpanDokumen(docId, lastLocalJudulRef.current, lastLocalTeksRef.current);
+          await DataService.simpanDokumen(docId, lastLocalJudulRef.current || doc.judul || '', textToSave);
           if (collabSession) {
-            await DataService.saveYjsDocState(docId, collabSession.getYjsState());
+            await DataService.saveYjsDocState(docId, collabSession.getYjsState(), false);
           }
           isDirtyRef.current = false;
         } catch (e) {
@@ -662,16 +695,18 @@ export const StudentEditorView: React.FC<StudentEditorViewProps> = ({
           </div>
 
           {/* Tiptap Rich-Text Editor */}
-          {isCollabDoc && !collabSession ? (
+          {!doc || (isCollabDoc && !collabSession) ? (
             <div className="py-24 flex flex-col items-center justify-center gap-3 text-stone-500 dark:text-stone-400">
               <div className="w-8 h-8 border-3 border-stone-300 dark:border-stone-700 border-t-purple-600 rounded-full animate-spin" />
-              <p className="text-xs font-serif-literary tracking-wide">Menghubungkan ruang kolaborasi naskah...</p>
+              <p className="text-xs font-serif-literary tracking-wide">
+                {!doc ? 'Memuat naskah tulisan...' : 'Menghubungkan ruang kolaborasi naskah...'}
+              </p>
             </div>
           ) : (
             <NulisEditor
               key={docId + '_' + (isCollabDoc ? 'collab' : 'solo')}
               docId={docId}
-              initialContent={teks}
+              initialContent={teks || doc.teks || ''}
               initialLayoutMode={doc?.layoutMode || (typeof window !== 'undefined' ? (localStorage.getItem('nulislur_layout_mode') as 'web' | 'kertas') : null) || 'kertas'}
               onLayoutModeChange={(mode) => {
                 if (docId) {

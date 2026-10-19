@@ -2498,11 +2498,12 @@ export const DataService = {
 
     // ZERO-TRUST SAFETY SHIELD:
     // Cek apakah data teks yang dikirim adalah string kosong atau tag kosong
-    const isIncomingTeksEmpty = !teks || teks.trim() === '' || teks === '<p></p>' || teks === '<p><br></p>' || teks.trim() === '<p> </p>';
+    const cleanTeksContent = (teks || '').replace(/<[^>]+>/g, '').trim();
+    const isIncomingTeksEmpty = !teks || teks.trim() === '' || teks === '<p></p>' || teks === '<p><br></p>' || teks.trim() === '<p> </p>' || cleanTeksContent.length === 0;
     const isIncomingJudulEmpty = !judul || judul.trim() === '';
 
     // Snapshot lokal darurat setiap kali ada teks valid (Disaster Recovery Buffer)
-    if (!isIncomingTeksEmpty && typeof window !== 'undefined') {
+    if (!isIncomingTeksEmpty && cleanTeksContent.length > 0 && typeof window !== 'undefined') {
       try {
         localStorage.setItem(`nulislur_backup_${id}`, JSON.stringify({
           judul,
@@ -2522,14 +2523,15 @@ export const DataService = {
 
       // Perlindungan jika teks / judul kosong dikirim:
       // Verifikasi ke database apakah dokumen sebelumnya memiliki konten asli.
-      // DILARANG KERAS menimpa tulisan siswa dengan teks kosong!
-      if (isIncomingTeksEmpty || isIncomingJudulEmpty) {
+      // DILARANG KERAS menimpa tulisan siswa dengan teks kosong atau hilang mendadak!
+      if (isIncomingTeksEmpty || isIncomingJudulEmpty || cleanTeksContent.length < 3) {
         try {
           const { data: currentDoc } = await supabase.from('dokumen').select('judul, teks').eq('id', id).maybeSingle();
           if (currentDoc) {
-            const currentHasContent = currentDoc.teks && currentDoc.teks.length > 15 && currentDoc.teks !== '<p></p>' && currentDoc.teks !== '<p><br></p>';
-            if (isIncomingTeksEmpty && currentHasContent) {
-              console.warn(`[SAFETY SHIELD NULISLUR] Menolak penimpaan teks kosong pada dokumen ${id}. Konten asli dipertahankan!`);
+            const currentClean = (currentDoc.teks || '').replace(/<[^>]+>/g, '').trim();
+            const currentHasContent = currentClean.length > 20;
+            if ((isIncomingTeksEmpty || cleanTeksContent.length < 3) && currentHasContent) {
+              console.warn(`[SAFETY SHIELD NULISLUR] Menolak penimpaan teks kosong/hilang pada dokumen ${id}. Konten asli (${currentClean.length} karakter) dipertahankan!`);
               safeTeks = currentDoc.teks;
             }
             if (isIncomingJudulEmpty && currentDoc.judul && currentDoc.judul.trim().length > 0) {
@@ -5191,13 +5193,13 @@ export const DataService = {
         } catch {}
       }
       if (localOnly) return;
-      // Safety guard: Jangan simpan jika ukuran binary > 50 KB untuk mencegah pembengkakan egress kuota Supabase
-      if (state.byteLength > 50 * 1024) return;
+      // Safety guard: Jangan simpan jika ukuran binary > 500 KB untuk mencegah pembengkakan egress kuota Supabase
+      if (state.byteLength > 500 * 1024) return;
       if (isSupabaseConfigured) {
         await supabase.from('pengaturan').upsert({
           key: `collab_yjs_${docId}`,
           val: b64,
-        });
+        }, { onConflict: 'key' });
       }
     } catch (e) {
       console.warn('Gagal menyimpan state Yjs dokumen:', e);
